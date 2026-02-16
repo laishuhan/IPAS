@@ -219,7 +219,12 @@ def main_kongzhi(folder_path):
         merge_txt_files(os.path.join(folder_path, "report_abnormal.txt"),os.path.join(folder_path, "report_polished_jianyi.txt"),os.path.join(folder_path, "temp_report_polished_merge.txt"))
         # 无法正常润色时，直接使用初版建议输出
     
-    merge_txt_files(os.path.join(folder_path, "eval_info.txt"),os.path.join(folder_path, "temp_report_polished_merge.txt"),os.path.join(folder_path, "report_polished_merge.txt"))
+    IS_SHOW_EVAL_INFO =  False
+
+    if IS_SHOW_EVAL_INFO:
+         merge_txt_files(os.path.join(folder_path, "eval_info.txt"),os.path.join(folder_path, "temp_report_polished_merge.txt"),os.path.join(folder_path, "report_polished_merge.txt"))
+    else:
+        copy_file(os.path.join(folder_path, "temp_report_polished_merge.txt"), os.path.join(folder_path, "report_polished_merge.txt"))
 
     if not check_point(folder_path, "report_polished_merge.txt", start_time, is_show=1):
         print("未生成report_polished_merge.txt", "后端错误报告-综合评估与润色结果融合！")

@@ -1,152 +1,290 @@
-import json
+# === main_eval.py ===
+# PRISM-Risk Upgraded Pipeline: 
+# Weak Supervision + Bayesian Inference + Calibration + Conformal + Evidence + Recourse
+# 入口参数：--processed_report_info_path (输入JSON) --eval_info_path (输出文本)
+
+from __future__ import annotations
+
 import argparse
-# 引入 LEVEL_THRESHOLDS 用于在主流程判断等级
-from config_eval import status_map, URGENCY_CONFIG 
-from evaluator import PatientEvaluator
-from utils_eval import flatten_list
-from utils_eval import get_need_info_from_all_info
-from utils_eval import calculate_urgency
-from utils_eval import extract_global_user_info
+import json
+import os
+from typing import Any, Dict, List, Optional, Tuple
 
-from medical_logic import adjust_total_score_global 
+import numpy as np
 
-parser = argparse.ArgumentParser()
-parser.add_argument("--processed_report_info_path", type=str, default="temp.json")
-parser.add_argument("--eval_info_path", type=str, default="eval_result.json")
-args = parser.parse_args()
+# 导入内部模块
+from core import (
+    NeedInfo,
+    build_context_from_processed,
+    extract_quality,
+    extract_indicator_vector,
+    extract_feature_dict,
+    build_model_features,
+)
+from generative import GenerativeRiskModel
+from bayes import BayesianLogistic
+from calibration import PlattCalibrator, IsotonicCalibrator, ece_score, brier_score, reliability_bins
+from selective import ConformalBinary, abstain_decision, selective_metrics
+from weak_supervision import build_default_lfs, LabelModelEM
+from evidence import build_evidence_chain
+from recourse import probability_constrained_recourse
 
 
-if __name__ == '__main__':
-    # args = parser.parse_args()
-    
-    # 请根据实际环境修改路径
-    PROCESSED_REPORT_INFO_PATH = args.processed_report_info_path
-    EVAL_INFO_PATH = args.eval_info_path
-    
-    try:
-        with open(PROCESSED_REPORT_INFO_PATH, "r", encoding="utf-8") as f:
-             data = json.load(f)
-    except FileNotFoundError:
-        print(f"Error: File not found at {PROCESSED_REPORT_INFO_PATH}")
-        exit(1)
+# =========================================================
+# 辅助工具函数
+# =========================================================
 
-    info_list = data.get("info", [])  # 防止 key 不存在报错
-    # 如果 info_list 为空：直接输出一个空白 txt，然后结束程序
+def _ensure_dir_for_file(path: str) -> None:
+    d = os.path.dirname(path)
+    if d:
+        os.makedirs(d, exist_ok=True)
+
+
+def _risk_level_cn(p: float, abstain: bool) -> str:
+    if abstain:
+        return "拒判（建议人工复核）"
+    if p >= 0.7:
+        return "高风险"
+    if p <= 0.3:
+        return "低风险"
+    return "中风险"
+
+
+def _build_need_info_from_processed(processed: Dict[str, Any]) -> List[Any]:
+    """解析原始 JSON 中的指标信息"""
+    info_list = processed.get("info", [])
     if not info_list:
-        try:
-            with open(EVAL_INFO_PATH, "w", encoding="utf-8") as f_out:
-                f_out.write("")  # 空白文件
-            print(f"\n info_list 为空，已输出空白结果文件至: {EVAL_INFO_PATH}")
-        except Exception as e:
-            print(f"\n info_list 为空，但写入空白文件失败: {e}")
-        exit(0)
+        raise ValueError("processed_report_info.json 缺少 info 字段")
 
-    all_info = []
+    first = info_list[0]
+    sex = first.get("sex", -1)
+    age = first.get("age", -1)
+    period_info = first.get("period_info", None)
+    preg_info = first.get("preg_info", None)
 
-    # 1. 提取全局信息 (Index 0)
-    user_sex, user_age, user_period_info, user_preg_info = extract_global_user_info(info_list)
+    need_info = [[sex, age, period_info, preg_info]]
+    for report in info_list:
+        r_type = report.get("report_type", -1)
+        indicators = report.get("indicator_analysis", [])
+        codes = [int(item) if str(item).isdigit() or (isinstance(item, (int, float)) and item == -1) else -1 for item in indicators]
+        need_info.append([r_type, codes])
 
-    global_info = [
-        user_sex,
-        user_age,
-        user_period_info,
-        user_preg_info
-    ]
-    all_info.append(global_info)
+    return need_info
 
-    # 2. 处理子报告信息
-    for item in info_list:
-        report_type = item["report_type"]
-        report_data = item["report_data"]
-        abnormal_data_text = flatten_list(item["indicator_analysis"])
-        character_data = flatten_list(item["character_analysis"])
 
-        # --- 特殊业务逻辑处理区 ---
-        if report_type in (4, 5): 
-            if report_data[0] == [-1, -1]: 
-                abnormal_data_text[0] = "不存在"
-                abnormal_data_text[1] = "不存在" 
-            if report_data[1] == 0:
-                abnormal_data_text[2] = "不存在"
-        else: 
-            limit = min(len(report_data), len(abnormal_data_text))
-            for i in range(limit):
-                val = report_data[i]
-                if val == -1:
-                    abnormal_data_text[i] = "不存在"
-                elif val in ("阴性", "阳性"):
-                    abnormal_data_text[i] = val
+def _infer_splits(n: int) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """默认数据集切分：60% 训练, 20% 校准, 20% 测试"""
+    idx = np.arange(n)
+    rng = np.random.default_rng(42)
+    rng.shuffle(idx)
+    n_train = max(1, int(0.6 * n))
+    n_cal = max(1, int(0.2 * n))
+    return idx[:n_train], idx[n_train:n_train + n_cal], idx[n_train + n_cal:]
+
+
+def _maybe_get_dataset(processed: Dict[str, Any]) -> Optional[List[Dict[str, Any]]]:
+    ds = processed.get("dataset", None)
+    return ds if isinstance(ds, list) and len(ds) > 0 else None
+
+
+def _load_need_ctx_q(sample: Dict[str, Any]) -> Tuple[NeedInfo, Dict[str, Any], QualityVector]:
+    """支持多格式样本加载"""
+    if "info" in sample:
+        legacy = _build_need_info_from_processed(sample)
+        context = build_context_from_processed(sample)
+    else:
+        legacy = sample.get("legacy", None)
+        context = sample.get("context", {})
+    
+    need = NeedInfo.from_legacy(legacy)
+    Q = extract_quality(need, context)
+    return need, context, Q
+
+
+# =========================================================
+# 主程序
+# =========================================================
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--processed_report_info_path", type=str, required=True)
+    parser.add_argument("--eval_info_path", type=str, required=True)
+    args = parser.parse_args()
+
+    if not os.path.exists(args.processed_report_info_path):
+        raise FileNotFoundError(f"输入文件未找到: {args.processed_report_info_path}")
+
+    with open(args.processed_report_info_path, "r", encoding="utf-8") as f:
+        processed = json.load(f)
+
+    warnings: List[str] = []
+
+    # 1) 单样本解析 (当前正在评估的对象)
+    need, context, Q = _load_need_ctx_q(processed)
+
+    # 2) 生成式模型后验概率 (Latent variable Z)
+    gen_model = GenerativeRiskModel()
+    gen_out = gen_model.posterior(need, Q)
+
+    # 3) 弱监督投票 (Labeling Functions)
+    lfs = build_default_lfs()
+    # BUG FIX: 调用 lf.fn 而非直接调用对象
+    lf_votes_single = np.array([lf.fn(need, Q, context) for lf in lfs], dtype=int)
+
+    # 4) 数据集处理 (若提供 dataset 字段，则进行在线学习/校准)
+    dataset = _maybe_get_dataset(processed)
+    labels = processed.get("labels", None)
+    
+    Phi_all, y_soft, y_true = None, None, None
+    train_idx, cal_idx, test_idx = None, None, None
+
+    if dataset and len(dataset) >= 5:
+        n = len(dataset)
+        train_idx, cal_idx, test_idx = _infer_splits(n)
+        L_all = np.zeros((n, len(lfs)), dtype=int)
+        feats = []
+
+        for i, sample in enumerate(dataset):
+            ni, ci, Qi = _load_need_ctx_q(sample)
+            # BUG FIX: 调用 lf.fn
+            L_all[i, :] = np.array([lf.fn(ni, Qi, ci) for lf in lfs], dtype=int)
+            gi = gen_model.posterior(ni, Qi)
+            phi_i = build_model_features(extract_feature_dict(ni, Qi, gi, ci))
+            feats.append(phi_i)
+
+        Phi_all = np.vstack(feats)
+
+        # 确定标签来源：真值或 LabelModel
+        if isinstance(labels, list) and len(labels) == n:
+            y_true = np.asarray(labels, dtype=int)
+            y_soft = y_true.astype(float)
+        else:
+            lm = LabelModelEM()
+            lm.fit(L_all[train_idx, :])
+            y_soft = lm.predict_proba(L_all)
+    else:
+        warnings.append("未提供数据集或数据不足，将使用预置权重运行演示模式。")
+
+    # 5) 训练/拟合贝叶斯模型 (Laplace Approximation)
+    bayes = BayesianLogistic(lambda_reg=1.0)
+    phi_single = build_model_features(extract_feature_dict(need, Q, gen_out, context)).reshape(1, -1)
+
+    if Phi_all is not None and y_soft is not None:
+        bayes.fit(Phi_all[train_idx, :], y_soft[train_idx])
+    else:
+        # 演示模式：极小规模拟合
+        bayes.fit(np.vstack([phi_single, phi_single]), np.array([0.5, 0.5]))
+
+    # 获取贝叶斯预测与不确定性分解
+    pred_u = bayes.predictive_with_uncertainty(phi_single.flatten())
+    p_raw = pred_u["p_mean"]
+    epistemic = pred_u["epistemic"]
+    aleatoric = pred_u["aleatoric"]
+
+    # 6) 校准 (Calibration) 与 共形预测 (Conformal)
+    p_final = p_raw
+    calib_report = {"method": "none"}
+    conformal_set = ["mid"]
+    platt = PlattCalibrator()
+
+    if Phi_all is not None and y_true is not None and cal_idx is not None:
+        p_cal_raw = bayes.predict_proba(Phi_all[cal_idx, :])
+        y_cal = y_true[cal_idx]
         
-        # Text -> ID
-        abnormal_data_ids = [status_map.get(x, -1) for x in abnormal_data_text]
+        # Platt Scaling
+        platt.fit(p_cal_raw, y_cal)
+        # BUG FIX: 使用 transform 而非 predict
+        p_final = float(platt.transform(np.array([p_raw]))[0])
+        p_cal_platt = platt.transform(p_cal_raw)
 
-        sub_info = [
-            report_type, 
-            report_data, 
-            abnormal_data_text, 
-            abnormal_data_ids, 
-            character_data
-        ]
-        all_info.append(sub_info)
-        
-    
-    # 3. 提取模型所需精简信息
-    need_info = get_need_info_from_all_info(all_info)
-    
-    # 4. 执行评估与统计
-    evaluator = PatientEvaluator()
-    
-    # (1) 计算分数
-    eval_result = evaluator.evaluate(need_info)
-    
-    current_score = eval_result['total_score']
-    extra_score = eval_result.get('extra_score', 0)
-    rule_hits = eval_result.get('rule_hits', [])
-    
-    # (2) 计算统计
-    stats_result = evaluator.calculate_statistics(need_info)
-    abnormal_count = stats_result["abnormal"]
-    existing_count = stats_result["existing"]
-    abnormal_ratio_percent = stats_result["ratio"] * 100
+        calib_report = {
+            "method": "platt",
+            "ece": float(ece_score(p_cal_platt, y_cal)),
+            "brier": float(brier_score(p_cal_platt, y_cal)),
+            "params": {"a": platt.a, "b": platt.b}
+        }
 
-    # 5. 全局修正
-    # 注意: current_score 此时已经包含了 rule 的强制加分
-    # 这样年龄系数和占比系数会进一步放大这个加分 (符合高风险人群在严重问题下风险更大的逻辑)
-    current_score = adjust_total_score_global(
-        sex=user_sex, 
-        age=user_age, 
-        period_info=user_period_info, 
-        preg_info=user_preg_info, 
-        abnormal_ratio_percent=abnormal_ratio_percent, 
-        total_score=current_score
+        # Conformal Prediction
+        conf = ConformalBinary(alpha=0.1)
+        conf.fit(p_cal_platt, y_cal)
+        conformal_set = conf.predict_set(p_final)
+    else:
+        warnings.append("缺少标签或校准集，无法提供校准及共形覆盖率保证。")
+
+    # 7) 决策逻辑：拒判与风险等级
+    # 基于认识不确定性 (epistemic) 或 共形集合模糊度
+    abstain = abstain_decision(epistemic, conformal_set, epistemic_threshold=0.6)
+    risk_level = _risk_level_cn(p_final, abstain)
+
+    # 8) 证据链报告 (Interpretability)
+    # BUG FIX: 传递修正后的参数名及 w_map
+    evidence = build_evidence_chain(
+        need=need, Q=Q,
+        p_model=p_final,
+        lf_names=[lf.name for lf in lfs],
+        lf_outputs=lf_votes_single,
+        bayes_phi=phi_single.flatten(),
+        bayes_w=bayes.w_map
     )
-    
-    # 6. 判定等级
-    result_config = calculate_urgency(current_score, URGENCY_CONFIG)
-    
-    # 7. 输出结果
-    output_lines = []
 
-    output_lines.append(f"综合异常等级: Level {result_config['level']}/5")
-    output_lines.append(f"等级定义: {result_config['desc']}")
-    
-    output_lines.append(f"异常指标占比: {abnormal_ratio_percent:.1f}%  ({abnormal_count}/{existing_count})")
-    
-    final_output_text = "\n".join(output_lines)
-    
-    #  打印到控制台
-    # print(final_output_text)
-    
-    #  输出到文件 (EVAL_INFO_PATH)
-    try:
-        # 使用 'w' 模式覆盖写入，如果需要追加请改为 'a'
-        with open(EVAL_INFO_PATH, "w", encoding="utf-8") as f_out:
-            f_out.write(final_output_text)
-        print(f"\n 综合评估结果已成功保存至: {EVAL_INFO_PATH}")
-    except Exception as e:
-        print(f"\n 综合评估结果写入文件失败: {e}")
+    # 9) 反事实溯因 (Recourse)
+    # 目标：如果异常指标减少，概率如何变化
+    def prob_oracle(x_new: np.ndarray) -> float:
+        f = dict(extract_feature_dict(need, Q, gen_out, context))
+        f["abnormal_ratio"] = float(np.mean(x_new)) if len(x_new) > 0 else 0.0
+        p = float(bayes.predict_proba(build_model_features(f).reshape(1, -1))[0])
+        if calib_report["method"] == "platt":
+            p = float(platt.transform(np.array([p]))[0])
+        return p
 
-    
+    recourse = probability_constrained_recourse(
+        extract_indicator_vector(need), 
+        prob_oracle, 
+        tau=0.3
+    )
 
-    
+    # 10) 输出结果保存
+    res_lines = [
+        "PRISM-Risk 综合评估报告",
+        "================================",
+        f"原始预测概率 (p_raw): {p_raw:.4f}",
+        f"校准后概率 (p_final): {p_final:.4f}",
+        f"风险等级 (Risk Level): {risk_level}",
+        f"共形预测集 (Conformal Set): {conformal_set}",
+        f"建议拒判 (Abstain): {'是' if abstain else '否'}",
+        "",
+        "不确定性分解 (Uncertainty)",
+        "--------------------------------",
+        f"偶然不确定性 (Aleatoric - 数据噪声): {aleatoric:.6f}",
+        f"认识不确定性 (Epistemic - 模型认知): {epistemic:.6f}",
+        "",
+        "校准详情 (Calibration)",
+        "--------------------------------",
+        json.dumps(calib_report, ensure_ascii=False, indent=2),
+        "",
+        "证据链 (Evidence Chain)",
+        "--------------------------------",
+        json.dumps(evidence, ensure_ascii=False, indent=2),
+        "",
+        "溯因分析 (Recourse Path)",
+        "--------------------------------",
+        json.dumps(recourse, ensure_ascii=False, indent=2),
+        ""
+    ]
 
+    if warnings:
+        res_lines.append("警告 (Warnings)")
+        res_lines.append("--------------------------------")
+        for w in warnings:
+            res_lines.append(f"- {w}")
+
+    output_content = "\n".join(res_lines)
+    _ensure_dir_for_file(args.eval_info_path)
+    with open(args.eval_info_path, "w", encoding="utf-8") as f:
+        f.write(output_content)
+
+    print(f"\n[Success] 评估完成。结果已写入: {args.eval_info_path}")
+
+
+if __name__ == "__main__":
+    main()
