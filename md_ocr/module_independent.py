@@ -72,7 +72,7 @@ def create_ocr():
 
 def get_img_angle(image_path, method = "DEFAULT", vision_model = 0):
     """
-    获得图片旋转角度（保持原函数名不变）
+    获得图片相比于原始状态被顺时针的旋转角度（保持原函数名不变）
     """
     if method == "DEFAULT":
         return 0
@@ -265,7 +265,7 @@ def get_basic_info_independent(task_record_path, ocr_result_path, is_idp_rotate,
             
             if is_idp_rotate:
                 angle = get_img_angle(path, method_rotate, vision_model_rotate)
-                print(f"通过方法{method_rotate}检测到图片{path}旋转角度{angle}度")
+                print(f"通过方法{method_rotate}检测到图片{path}相比于原始状态被顺时针旋转角度{angle}度")
                 new_image_path = reversed_rotate_image(angle, path, "_rotate_BY_mdocr")
                 print(f"已反向旋转{angle}度回正，新图片路径为{new_image_path}")
                 item[0] = new_image_path
