@@ -3,8 +3,6 @@ import os
 import json
 import argparse
 import copy
-from datetime import datetime
-from PIL import Image
 import traceback
 from concurrent.futures import ThreadPoolExecutor
 
