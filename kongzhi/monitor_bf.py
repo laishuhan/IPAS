@@ -215,16 +215,37 @@ def main_kongzhi(folder_path):
 
     if not check_point(folder_path, "temp_report_polished_merge.txt", start_time, is_show=1):
         print("未生成temp_report_polished_merge.txt", "后端错误报告-大模型润色！")
-        copy_file(os.path.join(folder_path, "report_jianyi.txt"),os.path.join(folder_path, "report_polished_jianyi.txt"))
-        merge_txt_files(os.path.join(folder_path, "report_abnormal.txt"),os.path.join(folder_path, "report_polished_jianyi.txt"),os.path.join(folder_path, "temp_report_polished_merge.txt"))
+        copy_file(
+            os.path.join(folder_path, "report_jianyi.txt"),
+            os.path.join(folder_path, "report_polished_jianyi.txt")
+        )
+        merge_txt_files(
+            os.path.join(folder_path, "report_abnormal.txt"),
+            os.path.join(folder_path, "report_polished_jianyi.txt"),
+            os.path.join(folder_path, "temp_report_polished_merge.txt")
+        )
         # 无法正常润色时，直接使用初版建议输出
     
-    IS_SHOW_EVAL_INFO =  False
+    IS_SHOW_EVAL = False
 
-    if IS_SHOW_EVAL_INFO:
-         merge_txt_files(os.path.join(folder_path, "eval_info.txt"),os.path.join(folder_path, "temp_report_polished_merge.txt"),os.path.join(folder_path, "report_polished_merge.txt"))
+    if IS_SHOW_EVAL:
+        merge_txt_files(
+            os.path.join(folder_path, "eval_info.txt"),
+            os.path.join(folder_path, "temp_report_polished_merge.txt"),
+            os.path.join(folder_path, "report_polished_merge.txt")
+        )
     else:
-        copy_file(os.path.join(folder_path, "temp_report_polished_merge.txt"), os.path.join(folder_path, "report_polished_merge.txt"))
+        # 创建一个空的 txt 文件
+        empty_file_path = os.path.join(folder_path, "empty_eval_info.txt")
+        with open(empty_file_path, "w", encoding="utf-8") as f:
+            pass
+
+        # 合并空文件和 temp_report_polished_merge.txt
+        merge_txt_files(
+            empty_file_path,
+            os.path.join(folder_path, "temp_report_polished_merge.txt"),
+            os.path.join(folder_path, "report_polished_merge.txt")
+        )
 
     if not check_point(folder_path, "report_polished_merge.txt", start_time, is_show=1):
         print("未生成report_polished_merge.txt", "后端错误报告-综合评估与润色结果融合！")
