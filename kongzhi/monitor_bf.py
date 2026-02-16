@@ -49,7 +49,7 @@ class FolderCreationHandler(FileSystemEventHandler):
             print(f"已为新建文件夹 {new_folder} 启动处理进程")
 
 
-def check_point(folder_path, file_name, start_time, timeout=60, is_show=0):
+def check_point(folder_path, file_name, start_time, timeout=3600, is_show=0):
     if is_show == -1:
         return False
 
