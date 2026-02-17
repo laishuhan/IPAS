@@ -55,17 +55,6 @@ class NeedInfo:
             reports=reports,
         )
 
-    def to_legacy(self) -> List[Any]:
-        out = [[
-            self.global_info.sex,
-            self.global_info.age,
-            self.global_info.period_info,
-            self.global_info.preg_info,
-        ]]
-        for r in self.reports:
-            out.append([r.report_type, list(map(int, r.status_codes))])
-        return out
-
 
 @dataclass
 class QualityVector:
@@ -137,26 +126,6 @@ def abnormal_ratio(need: NeedInfo) -> float:
             total += 1
             if c not in (0, 9): abnormal += 1
     return float(abnormal / total) if total > 0 else 0.0
-
-def extract_feature_dict(need: NeedInfo, Q: QualityVector, gen_out: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, float]:
-    return {
-        "gen_p_high": float(gen_out.get("p_high", 0.0)),
-        "gen_entropy": float(gen_out.get("entropy", 0.0)),
-        "gen_dimension": float(gen_out.get("dimension", 0.0)),
-        "abnormal_ratio": float(abnormal_ratio(need)),
-        "num_reports": float(len(need.reports)),
-        "num_codes": float(sum(len(r.status_codes) for r in need.reports)),
-        "missing_rate_codes": float(np.mean([1 if int(c) == -1 else 0 for r in need.reports for c in r.status_codes]) if need.reports else 0.0),
-        "Q_severity": float(Q.severity()),
-        "Q_ocr_missing_rate": float(Q.ocr_missing_rate),
-        "Q_match_abs_diff_rate": float(Q.match_abs_diff_rate),
-        "Q_image_insufficient": float(Q.image_insufficient),
-        "Q_plus_exist_flag": float(Q.plus_exist_flag),
-        "bias": 1.0,
-    }
-
-def build_model_features(feature_dict: Dict[str, float]) -> np.ndarray:
-    return np.array([float(feature_dict.get(k, 0.0)) for k in _FEATURE_ORDER], dtype=float)
 
 def build_context_from_processed(processed: Dict[str, Any]) -> Dict[str, Any]:
     processed = processed or {}
@@ -235,70 +204,6 @@ def build_default_lfs() -> List[LabelingFunction]:
         LabelingFunction("image_insufficient_high", img_ins),
         LabelingFunction("quality_abstain", q_abst),
     ]
-
-class LabelModelEM:
-    # 二分类弱监督 label model（保留）
-    def __init__(self, init_prior: float = 0.3, max_iter: int = 50, tol: float = 1e-5):
-        self.class_prior_ = init_prior
-        self.max_iter = max_iter
-        self.tol = tol
-        self.acc_: Optional[np.ndarray] = None
-        self.prop_: Optional[np.ndarray] = None
-
-    def fit(self, L: np.ndarray) -> "LabelModelEM":
-        n, m = L.shape
-        prior = self.class_prior_
-        acc = np.full(m, 0.7)
-        prop = np.full(m, 0.6)
-        prev_ll = None
-
-        for _ in range(self.max_iter):
-            logp1 = np.log(prior + 1e-9) * np.ones(n)
-            logp0 = np.log(1 - prior + 1e-9) * np.ones(n)
-            for j in range(m):
-                vote = (L[:, j] != 0)
-                logp1[vote] += np.log(prop[j] + 1e-9); logp0[vote] += np.log(prop[j] + 1e-9)
-                logp1[~vote] += np.log(1 - prop[j] + 1e-9); logp0[~vote] += np.log(1 - prop[j] + 1e-9)
-                pos, neg = (L[:, j] == 1), (L[:, j] == -1)
-                logp1[pos] += np.log(acc[j] + 1e-9); logp1[neg] += np.log(1 - acc[j] + 1e-9)
-                logp0[neg] += np.log(acc[j] + 1e-9); logp0[pos] += np.log(1 - acc[j] + 1e-9)
-
-            mx = np.maximum(logp1, logp0)
-            p1, p0 = np.exp(logp1 - mx), np.exp(logp0 - mx)
-            post = p1 / (p1 + p0 + 1e-9)
-
-            ll = float(np.sum(mx + np.log(p1 + p0 + 1e-9)))
-            if prev_ll is not None and abs(ll - prev_ll) < self.tol: break
-            prev_ll = ll
-
-            prior = float(np.mean(post))
-            for j in range(m):
-                v_idx = (L[:, j] != 0)
-                prop[j] = np.mean(v_idx)
-                if np.sum(v_idx) > 0:
-                    correct = np.zeros(n)
-                    correct[L[:, j] == 1] = post[L[:, j] == 1]
-                    correct[L[:, j] == -1] = 1 - post[L[:, j] == -1]
-                    acc[j] = np.clip(np.sum(correct[v_idx]) / np.sum(v_idx), 0.51, 0.99)
-
-        self.class_prior_, self.acc_, self.prop_ = prior, acc, prop
-        return self
-
-    def predict_proba(self, L: np.ndarray) -> np.ndarray:
-        n, m = L.shape
-        lp1 = np.log(self.class_prior_ + 1e-9) * np.ones(n)
-        lp0 = np.log(1 - self.class_prior_ + 1e-9) * np.ones(n)
-        for j in range(m):
-            v = (L[:, j] != 0)
-            lp1[v] += np.log(self.prop_[j] + 1e-9); lp0[v] += np.log(self.prop_[j] + 1e-9)
-            lp1[~v] += np.log(1 - self.prop_[j] + 1e-9); lp0[~v] += np.log(1 - self.prop_[j] + 1e-9)
-            p, n_v = (L[:, j] == 1), (L[:, j] == -1)
-            lp1[p] += np.log(self.acc_[j] + 1e-9); lp1[n_v] += np.log(1 - self.acc_[j] + 1e-9)
-            lp0[n_v] += np.log(self.acc_[j] + 1e-9); lp0[p] += np.log(1 - self.acc_[j] + 1e-9)
-        mx = np.maximum(lp1, lp0)
-        p1, p0 = np.exp(lp1 - mx), np.exp(lp0 - mx)
-        return p1 / (p1 + p0 + 1e-9)
-
 
 @dataclass
 class LabelModelEMMulticlass:
@@ -466,59 +371,6 @@ class BayesianSoftmax:
         self.lambda_reg = float(lambda_reg)
         self.W_map: Optional[np.ndarray] = None     # (d, K)
         self.Sigma: Optional[np.ndarray] = None     # ((dK),(dK))
-
-    def fit(self, X: np.ndarray, y: np.ndarray, max_iter: int = 50, tol: float = 1e-6) -> "BayesianSoftmax":
-        X = np.asarray(X, dtype=float)
-        y = np.asarray(y, dtype=int).reshape(-1)
-        n, d = X.shape
-        K = self.n_classes
-        if np.any(y < 0) or np.any(y >= K):
-            raise ValueError(f"y out of range [0,{K-1}]")
-
-        # one-hot
-        Y = np.zeros((n, K), dtype=float)
-        Y[np.arange(n), y] = 1.0
-
-        # W: (d, K)
-        W = np.zeros((d, K), dtype=float)
-
-        # Newton iterations on MAP
-        I = np.eye(d * K, dtype=float)
-        for _ in range(max_iter):
-            logits = X @ W  # (n,K)
-            P = softmax(logits, axis=1)  # (n,K)
-
-            # gradient: X^T (P - Y) + lambda W
-            G = X.T @ (P - Y) + self.lambda_reg * W  # (d,K)
-            g = G.reshape(-1)
-
-            # Hessian: block structure
-            H = np.zeros((d * K, d * K), dtype=float)
-            for i in range(n):
-                xi = X[i].reshape(d, 1)  # (d,1)
-                Si = np.diag(P[i]) - np.outer(P[i], P[i])  # (K,K)
-                H += np.kron(Si, (xi @ xi.T))
-
-            H += self.lambda_reg * I
-
-            try:
-                delta = np.linalg.solve(H, g)
-            except np.linalg.LinAlgError:
-                delta = np.linalg.lstsq(H, g, rcond=None)[0]
-
-            W_new = (W.reshape(-1) - delta).reshape(d, K)
-
-            if np.linalg.norm(W_new - W) < tol:
-                W = W_new
-                self.W_map = W
-                self.Sigma = np.linalg.pinv(H)
-                return self
-
-            W = W_new
-
-        self.W_map = W
-        self.Sigma = np.linalg.pinv(H)
-        return self
 
     def fit_soft(self, X: np.ndarray, Y_soft: np.ndarray, max_iter: int = 50, tol: float = 1e-6) -> "BayesianSoftmax":
         """

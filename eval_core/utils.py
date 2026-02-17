@@ -12,9 +12,6 @@ from models import _FEATURE_ORDER, QualityVector, NeedInfo
 # 1) 多分类校准：Temperature Scaling
 # =========================================================
 
-def _clip01(p: np.ndarray, eps: float = 1e-12) -> np.ndarray:
-    return np.clip(p, eps, 1 - eps)
-
 def nll_multiclass(p: np.ndarray, y: np.ndarray) -> float:
     p = np.asarray(p, dtype=float)
     y = np.asarray(y, dtype=int).reshape(-1)
@@ -90,16 +87,6 @@ class TemperatureCalibrator:
     def transform(self, p_raw: np.ndarray) -> np.ndarray:
         logits = np.log(np.clip(np.asarray(p_raw, dtype=float), 1e-12, 1.0))
         return self.transform_logits(logits, self.T)
-
-    def report(self, p_raw: np.ndarray, y: np.ndarray) -> Dict[str, Any]:
-        p_cal = self.transform(p_raw)
-        return {
-            "method": "temperature",
-            "T": float(self.T),
-            "nll": float(nll_multiclass(p_cal, y)),
-            "ece_top": float(ece_toplabel(p_cal, y)),
-        }
-
 
 # =========================================================
 # 2) 多分类共形预测：APS (Adaptive Prediction Sets)
