@@ -30,7 +30,6 @@ from utils import (
 
 
 from data_adapter import (
-    build_xy_meta_evidence_from_processed,
     map_status_to_severity,
     severity_to_abnormal_binary,
 )
@@ -231,8 +230,6 @@ def main():
     p_sev = float(p_final[2])
     risk_level = _risk_level_cn_3class(y_pred_final, abstain)
 
-    X_single, y_single, meta_single, evidence_single, _feat_names = build_xy_meta_evidence_from_processed(processed)
-
     evidence_chain = build_evidence_chain(
         need=need,
         Q=Q,
@@ -301,10 +298,6 @@ def main():
         f"entropy: {entropy:.6f}",
         f"aleatoric: {aleatoric:.6f}",
         f"epistemic: {epistemic:.6f}",
-        "",
-        "结构化证据",
-        "--------------------------------",
-        json.dumps(evidence_single[0], ensure_ascii=False, indent=2),
         "",
         "证据链（贡献：p1+p2 & p2）",
         "--------------------------------",
