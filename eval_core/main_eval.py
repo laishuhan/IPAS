@@ -25,7 +25,9 @@ from utils import (
     build_evidence_chain,
     probability_constrained_recourse,
     topk_contrib_softmax_target,
+    selective_risk,   # NEW
 )
+
 
 from data_adapter import (
     build_xy_meta_evidence_from_processed,
@@ -218,12 +220,10 @@ def main():
     pred_set = conf.predict_set(p_final) if conf.qhat is not None else [int(np.argmax(p_final))]
 
     abstain = abstain_decision_multiclass(
+        p=p_final,
         epistemic=epistemic,
-        pred_set=pred_set,
-        entropy=entropy,
-        epistemic_threshold=0.6,
-        entropy_threshold=1.0,
-        allow_set_size_gt1=False,
+        tau_risk=0.3,
+        tau_epi=0.5,
     )
 
     y_pred_final = int(np.argmax(p_final))
@@ -271,6 +271,13 @@ def main():
 
     recourse = probability_constrained_recourse(extract_indicator_vector(need), prob_oracle, tau=0.3)
 
+    sel_stats = selective_risk(
+        p=p_final.reshape(1, -1),
+        y=np.array([y_pred_final]),
+        abstain_mask=np.array([abstain]),
+    )
+
+
     lines = [
         "综合评估报告（三分类 | 路由：type -> cluster -> global）",
         "================================",
@@ -311,6 +318,10 @@ def main():
         "--------------------------------",
         json.dumps(extra.get("train_meta", {}), ensure_ascii=False, indent=2),
         "",
+        "Selective Prediction",
+        "--------------------------------",
+        json.dumps(sel_stats, ensure_ascii=False, indent=2),
+
     ]
 
     _ensure_dir_for_file(args.eval_info_path)

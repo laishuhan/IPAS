@@ -218,7 +218,7 @@ class GenerativeRiskModel:
 
 
 # =========================================================
-# 4. 弱监督（保持你原有）
+# 4. 弱监督（保持你原有 + 新增多分类 EM Label Model）
 # =========================================================
 
 @dataclass
@@ -300,6 +300,154 @@ class LabelModelEM:
         return p1 / (p1 + p0 + 1e-9)
 
 
+@dataclass
+class LabelModelEMMulticlass:
+    """
+    Multi-class EM weak label model (Snorkel-style, conditional independence).
+    L_ij in {-1, 0, 1, 2}:
+      -1: abstain
+       0/1/2: vote for that class
+    Learns:
+      pi_k = P(Y=k)
+      q_j  = P(LF_j abstains)
+      A[j, v, k] = P(LF_j votes v | Y=k), where v in {0,1,2}
+    """
+    n_classes: int = 3
+    max_iter: int = 100
+    tol: float = 1e-6
+    seed: int = 42
+    min_prob: float = 1e-6
+
+    pi_: Optional[np.ndarray] = None        # (K,)
+    A_: Optional[np.ndarray] = None         # (m, K, K): A[j, v, k]
+    q_abstain_: Optional[np.ndarray] = None # (m,)
+
+    def fit(self, L: np.ndarray) -> "LabelModelEMMulticlass":
+        rng = np.random.default_rng(self.seed)
+        L = np.asarray(L, dtype=int)
+        n, m = L.shape
+        K = int(self.n_classes)
+
+        # init class prior
+        pi = np.ones(K, dtype=float) / K
+
+        # abstain rate per LF
+        q = np.clip(np.mean(L == -1, axis=0).astype(float), 1e-3, 1 - 1e-3)
+
+        # init A close to diagonal
+        A = np.zeros((m, K, K), dtype=float)
+        for j in range(m):
+            A[j] = 0.10 / max(1, K - 1)
+            np.fill_diagonal(A[j], 0.90)
+            # ensure normalization over votes v for each class k
+            A[j] = A[j] / (np.sum(A[j], axis=0, keepdims=True) + 1e-12)
+
+        prev_ll = None
+
+        for _ in range(int(self.max_iter)):
+            # -----------------
+            # E-step: posterior
+            # -----------------
+            logp = np.log(pi + 1e-12)[None, :].repeat(n, axis=0)  # (n,K)
+
+            for j in range(m):
+                lj = L[:, j]
+                abst = (lj == -1)
+                if np.any(abst):
+                    logp[abst] += np.log(q[j] + 1e-12)
+
+                non = ~abst
+                if np.any(non):
+                    v = lj[non]
+                    # safety: clip invalid votes to abstain
+                    invalid = (v < 0) | (v >= K)
+                    if np.any(invalid):
+                        # treat invalid as abstain
+                        idx_invalid = np.where(non)[0][invalid]
+                        logp[idx_invalid] += np.log(q[j] + 1e-12)
+                        idx_valid = np.where(non)[0][~invalid]
+                        v_valid = v[~invalid]
+                        if len(idx_valid) > 0:
+                            logp[idx_valid] += np.log(1 - q[j] + 1e-12)
+                            logp[idx_valid] += np.log(A[j, v_valid, :].T + 1e-12).T
+                    else:
+                        logp[non] += np.log(1 - q[j] + 1e-12)
+                        logp[non] += np.log(A[j, v, :].T + 1e-12).T
+
+            mx = np.max(logp, axis=1, keepdims=True)
+            p = np.exp(logp - mx)
+            p = p / (np.sum(p, axis=1, keepdims=True) + 1e-12)
+
+            # log-likelihood
+            ll = float(np.sum(mx.squeeze() + np.log(np.sum(np.exp(logp - mx), axis=1) + 1e-12)))
+            if prev_ll is not None and abs(ll - prev_ll) < float(self.tol):
+                break
+            prev_ll = ll
+
+            # -----------------
+            # M-step
+            # -----------------
+            pi = np.clip(np.mean(p, axis=0), self.min_prob, 1.0)
+            pi = pi / pi.sum()
+
+            q = np.clip(np.mean(L == -1, axis=0).astype(float), 1e-3, 1 - 1e-3)
+
+            for j in range(m):
+                lj = L[:, j]
+                non = (lj != -1)
+                if not np.any(non):
+                    continue
+                denom = np.sum(p[non], axis=0) + 1e-12  # (K,)
+
+                Aj = np.zeros((K, K), dtype=float)  # (v,k)
+                for v in range(K):
+                    idx = non & (lj == v)
+                    if np.any(idx):
+                        Aj[v, :] = np.sum(p[idx], axis=0) / denom
+                    else:
+                        Aj[v, :] = self.min_prob
+
+                Aj = Aj / (np.sum(Aj, axis=0, keepdims=True) + 1e-12)
+                A[j] = Aj
+
+        self.pi_, self.A_, self.q_abstain_ = pi, A, q
+        return self
+
+    def predict_proba(self, L: np.ndarray) -> np.ndarray:
+        if self.pi_ is None or self.A_ is None or self.q_abstain_ is None:
+            raise RuntimeError("LabelModelEMMulticlass not fit")
+        L = np.asarray(L, dtype=int)
+        n, m = L.shape
+        K = int(self.n_classes)
+
+        logp = np.log(self.pi_ + 1e-12)[None, :].repeat(n, axis=0)
+        for j in range(m):
+            lj = L[:, j]
+            abst = (lj == -1)
+            if np.any(abst):
+                logp[abst] += np.log(self.q_abstain_[j] + 1e-12)
+
+            non = ~abst
+            if np.any(non):
+                v = lj[non]
+                invalid = (v < 0) | (v >= K)
+                if np.any(invalid):
+                    idx_invalid = np.where(non)[0][invalid]
+                    logp[idx_invalid] += np.log(self.q_abstain_[j] + 1e-12)
+                    idx_valid = np.where(non)[0][~invalid]
+                    v_valid = v[~invalid]
+                    if len(idx_valid) > 0:
+                        logp[idx_valid] += np.log(1 - self.q_abstain_[j] + 1e-12)
+                        logp[idx_valid] += np.log(self.A_[j, v_valid, :].T + 1e-12).T
+                else:
+                    logp[non] += np.log(1 - self.q_abstain_[j] + 1e-12)
+                    logp[non] += np.log(self.A_[j, v, :].T + 1e-12).T
+
+        mx = np.max(logp, axis=1, keepdims=True)
+        p = np.exp(logp - mx)
+        return p / (np.sum(p, axis=1, keepdims=True) + 1e-12)
+
+
 # =========================================================
 # 5. 贝叶斯多分类 Softmax 回归（新增：三分类用这个）
 # =========================================================
@@ -345,14 +493,62 @@ class BayesianSoftmax:
             g = G.reshape(-1)
 
             # Hessian: block structure
-            # H = sum_i (x_i x_i^T) ⊗ (Diag(p_i) - p_i p_i^T) + lambda I
             H = np.zeros((d * K, d * K), dtype=float)
             for i in range(n):
                 xi = X[i].reshape(d, 1)  # (d,1)
                 Si = np.diag(P[i]) - np.outer(P[i], P[i])  # (K,K)
-                # kron(Si, xi xi^T)
                 H += np.kron(Si, (xi @ xi.T))
 
+            H += self.lambda_reg * I
+
+            try:
+                delta = np.linalg.solve(H, g)
+            except np.linalg.LinAlgError:
+                delta = np.linalg.lstsq(H, g, rcond=None)[0]
+
+            W_new = (W.reshape(-1) - delta).reshape(d, K)
+
+            if np.linalg.norm(W_new - W) < tol:
+                W = W_new
+                self.W_map = W
+                self.Sigma = np.linalg.pinv(H)
+                return self
+
+            W = W_new
+
+        self.W_map = W
+        self.Sigma = np.linalg.pinv(H)
+        return self
+
+    def fit_soft(self, X: np.ndarray, Y_soft: np.ndarray, max_iter: int = 50, tol: float = 1e-6) -> "BayesianSoftmax":
+        """
+        Same as fit(), but uses soft targets Y_soft (n,K) where each row is a probability simplex.
+        """
+        X = np.asarray(X, dtype=float)
+        Y_soft = np.asarray(Y_soft, dtype=float)
+        n, d = X.shape
+        K = self.n_classes
+        if Y_soft.shape != (n, K):
+            raise ValueError(f"Y_soft shape {Y_soft.shape} != (n={n},K={K})")
+        # normalize for safety
+        Y_soft = np.clip(Y_soft, 1e-12, 1.0)
+        Y_soft = Y_soft / (np.sum(Y_soft, axis=1, keepdims=True) + 1e-12)
+
+        W = np.zeros((d, K), dtype=float)
+        I = np.eye(d * K, dtype=float)
+
+        for _ in range(max_iter):
+            logits = X @ W
+            P = softmax(logits, axis=1)
+
+            G = X.T @ (P - Y_soft) + self.lambda_reg * W
+            g = G.reshape(-1)
+
+            H = np.zeros((d * K, d * K), dtype=float)
+            for i in range(n):
+                xi = X[i].reshape(d, 1)
+                Si = np.diag(P[i]) - np.outer(P[i], P[i])
+                H += np.kron(Si, (xi @ xi.T))
             H += self.lambda_reg * I
 
             try:
@@ -400,15 +596,10 @@ class BayesianSoftmax:
 
         epi = 0.0
         if self.Sigma is not None:
-            # logit variance approx: Var(x^T w_k)
-            # Sigma is over vec(W) length dK
             d, K = self.W_map.shape
             xvec = x.reshape(-1)
-            # build per-class weight selector
             var_logits = []
             for k in range(K):
-                # selector matrix for class k: picks w_k
-                # vec(W) is [W[:,0], W[:,1], ...]
                 e = np.zeros(d * K, dtype=float)
                 e[k * d:(k + 1) * d] = xvec
                 var = float(e @ self.Sigma @ e)

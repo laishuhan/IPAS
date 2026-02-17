@@ -149,20 +149,30 @@ class ConformalAPS:
 
 
 def abstain_decision_multiclass(
+    p: np.ndarray,
     epistemic: float,
-    pred_set: List[int],
-    entropy: float,
-    epistemic_threshold: float = 0.6,
-    entropy_threshold: float = 1.0,
-    allow_set_size_gt1: bool = False,
+    tau_risk: float = 0.3,
+    tau_epi: float = 0.5,
 ) -> bool:
-    if epistemic > epistemic_threshold:
+    """
+    Bayesian risk-consistent abstention:
+
+    1) 预测风险 > tau_risk
+       risk ≈ 1 - max_k p_k
+    2) epistemic variance > tau_epi
+    """
+
+    p = np.asarray(p).reshape(-1)
+    risk = 1.0 - float(np.max(p))
+
+    if risk > tau_risk:
         return True
-    if entropy > entropy_threshold:
+
+    if float(epistemic) > tau_epi:
         return True
-    if (not allow_set_size_gt1) and (len(pred_set) > 1):
-        return True
+
     return False
+
 
 
 # =========================================================
@@ -321,3 +331,36 @@ def topk_contrib_softmax_target(
             "contribution": float(contrib[j])
         })
     return out
+
+# =========================================================
+# 5) Selective Risk Evaluation (NEW)
+# =========================================================
+
+def selective_risk(
+    p: np.ndarray,
+    y: np.ndarray,
+    abstain_mask: np.ndarray
+) -> Dict[str, float]:
+    """
+    计算 selective prediction 风险
+    coverage = 未拒判比例
+    selective_risk = 在未拒判样本上的错误率
+    """
+    p = np.asarray(p)
+    y = np.asarray(y).reshape(-1)
+    abstain_mask = np.asarray(abstain_mask).astype(bool)
+
+    keep = ~abstain_mask
+    if np.sum(keep) == 0:
+        return {
+            "coverage": 0.0,
+            "selective_risk": 0.0,
+        }
+
+    pred = np.argmax(p[keep], axis=1)
+    acc = np.mean(pred == y[keep])
+
+    return {
+        "coverage": float(np.mean(keep)),
+        "selective_risk": float(1.0 - acc),
+    }
