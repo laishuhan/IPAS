@@ -157,5 +157,3 @@ def trim_log_if_too_large(log_path: str, max_bytes: int = 10 * 1024 * 1024):
 
 
 
-
-
