@@ -5,6 +5,8 @@ import argparse
 import json
 import os
 from typing import Any, Dict, List, Tuple
+import shutil
+import sys
 
 import numpy as np
 
@@ -207,11 +209,52 @@ def kmeans_best_of_restarts(
 
     return best_labels, best_centers, float(best_sse), int(best_seed)
 
+def load_dataset(path: str) -> List[Dict[str, Any]]:
+    """
+    兼容性加载器：
+    - 如果是 .jsonl，按行读取
+    - 如果是 .json，读取其中的 "dataset" 字段
+    """
+    dataset = []
+    if not os.path.exists(path):
+        raise FileNotFoundError(f"找不到数据集文件: {path}")
+    
+    # 根据后缀判断读取方式
+    if path.lower().endswith(".jsonl"):
+        with open(path, "r", encoding="utf-8") as f:
+            for line_no, line in enumerate(f, 1):
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    dataset.append(json.loads(line))
+                except json.JSONDecodeError as e:
+                    print(f"[Warning] 第 {line_no} 行解析 JSON 失败，已跳过。")
+    else:
+        # 原有的标准 JSON 加载逻辑
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            if isinstance(data, dict) and "dataset" in data:
+                dataset = data["dataset"]
+            elif isinstance(data, list):
+                dataset = data
+            else:
+                raise ValueError("JSON 格式不符合要求：应包含 'dataset' 列表")
+    
+    return dataset
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--processed_report_info_path", type=str, required=True, help="包含 dataset(list) 的 JSON")
-    ap.add_argument("--model_root", type=str, required=True, help="输出目录根：global/type_/cluster_")
+
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+
+    default_train_data_path = os.path.join(current_dir, "dataset", "eval_train_dataset.jsonl")
+    ap.add_argument("--train_data_path", type=str, default=default_train_data_path, help=f"（默认为同级级中dataset下的eval_train_dataset.jsonl）")
+
+
+    default_model_root = os.path.join(current_dir, "model")
+    ap.add_argument("--model_root", type=str, default=default_model_root, help="输出目录根（默认: 同级中 eval_model）")
+    # --- 修改部分结束 ---
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--alpha", type=float, default=0.1)
     ap.add_argument("--lambda_reg", type=float, default=1.0)
@@ -226,12 +269,33 @@ def main():
 
     args = ap.parse_args()
 
-    with open(args.processed_report_info_path, "r", encoding="utf-8") as f:
-        processed = json.load(f)
+    # ==================== 新增：模型目录清理逻辑 ====================
+    # 锁定要清理的目录
+    target_root = os.path.abspath(args.model_root)
+    
+    if os.path.exists(target_root):
+        print(f"检测到旧模型目录：{target_root}")
+        try:
+            # 彻底删除旧目录及其下所有子专家模型
+            shutil.rmtree(target_root)
+            print(f"[Success] 已清理旧模型，确保无“僵尸专家”残留。")
+        except Exception as e:
+            print(f"[Error] 清理目录失败: {e}")
+            # 如果清理失败，通常是由于文件被占用，建议停止训练以防混淆
+            sys.exit(1)
+            
+    # 重新创建一个干净的根目录
+    os.makedirs(target_root, exist_ok=True)
+    # =============================================================
 
-    dataset = processed.get("dataset", None)
+    # --- 核心修改点：调用新的加载函数 ---
+    print(f"正在加载数据集: {args.train_data_path}")
+    dataset = load_dataset(args.train_data_path)
+    
     if not isinstance(dataset, list) or len(dataset) < 10:
-        raise ValueError("必须包含 dataset(list)，且样本数 >= 10")
+        raise ValueError(f"数据集样本量不足 (n={len(dataset)})，无法训练模型。")
+    
+    print(f"成功加载 {len(dataset)} 条样本。")
 
     y_all, abn_cnt_all, sev_cnt_all, valid_cnt_all = build_y_and_counts(dataset)
 

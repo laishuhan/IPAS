@@ -1,11 +1,8 @@
 import os
-from datetime import datetime
 import shutil
-from pathlib import Path
 import time
 import json
 import requests
-from datetime import datetime
 
 def get_basic_info(task_record_path):
         
@@ -56,37 +53,6 @@ def send_message_to_phone(msg ,title , PUSHDEER_URL, PUSHDEER_KEY):
     except Exception as e:
         print(f"发送推送失败：{e}")
 
-def copy_folder_to_database(folder_path, base_path):
-    """
-    将指定文件夹复制到指定的数据库文件夹中，文件夹名称将包含当前时间戳。
-
-    参数:
-    folder_path (str): 需要复制的源文件夹路径。
-    base_path (str): 存储目标文件夹的根目录路径（例如“database”）。
-
-    返回:
-    None
-    """
-    try:
-        # 确保目标数据库文件夹存在
-        database_dir = os.path.join(base_path, "database")
-        os.makedirs(database_dir, exist_ok=True)
-
-        # 生成带时间戳的目标文件夹名称
-        timestamp = datetime.now().strftime("report_%Y_%m_%d_%H_%M_%S")
-        folder_name = os.path.basename(os.path.normpath(folder_path))
-        dest_folder_name = f"{timestamp}_{folder_name}"
-        dest_folder = os.path.join(database_dir, dest_folder_name)
-
-        # 复制文件夹到目标目录
-        shutil.copytree(folder_path, dest_folder)
-
-        print(f"已将本进程中产生的所有文件{folder_path}备份")
-        print(f"备份到到数据库{database_dir}")
-        print(f"具体在数据库中位置为{dest_folder}\n")
-    except Exception as e:
-        print(f"复制文件夹失败：{e}")
-
 def copy_file(src_path, dst_path):
     os.makedirs(os.path.dirname(dst_path), exist_ok=True)
     shutil.copy(src_path, dst_path)  # 不保留文件属性
@@ -108,9 +74,6 @@ def merge_txt_files(file1_path, file2_path, output_path):
     
     except Exception as e:
         print(f"合并文件时发生错误: {e}")
-
-
-import json
 
 def show_file(file_path):
     """

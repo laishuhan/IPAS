@@ -153,19 +153,45 @@ def pick_model_dir(model_root: str, report_type: int) -> Tuple[str, str]:
     global_dir = os.path.join(model_root, "global")
     return global_dir, "global"
 
-
 def main():
+        
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+
     ap = argparse.ArgumentParser()
     ap.add_argument("--processed_report_info_path", type=str, required=True)
     ap.add_argument("--eval_info_path", type=str, required=True)
-    ap.add_argument("--model_root", type=str, required=True, help="train.py 输出目录根（global/type_/cluster_）")
+
+    default_root = os.path.join(current_dir, "model")
+    ap.add_argument("--model_root", type=str, default=default_root, help="模型目录根（默认: 同级中 model）")
     args = ap.parse_args()
 
-    with open(args.processed_report_info_path, "r", encoding="utf-8") as f:
-        processed = json.load(f)
 
-    info0 = processed["info"][0]
+    # --- 增加健壮性检查 ---
+    try:
+        with open(args.processed_report_info_path, "r", encoding="utf-8") as f:
+            processed = json.load(f)
+    except Exception as e:
+        print(f"[Error] 无法读取或解析 JSON 文件: {e}")
+        return
+
+    # 检查 info 字段是否存在且不为空
+    infos = processed.get("info", [])
+    if not isinstance(infos, list) or len(infos) == 0:
+        error_msg = (
+            "评估终止：输入 JSON 缺少有效的 'info' 数据。\n"
+            f"文件路径: {args.processed_report_info_path}\n"
+            "可能原因：OCR 未能识别出任何有效报告内容或数据清洗逻辑异常。"
+        )
+        _ensure_dir_for_file(args.eval_info_path)
+        with open(args.eval_info_path, "w", encoding="utf-8") as f:
+            f.write(error_msg)
+        print(f"[Warning] {error_msg}")
+        return # 优雅退出，不抛出 Crash
+
+    # 此时可以安全访问 [0]
+    info0 = infos[0]
     rt = int(info0.get("report_type", -1))
+    # --- 检查结束 ---
 
     model_dir, route_kind = pick_model_dir(args.model_root, rt)
     clf, temp, conf, extra = load_bundle(model_dir)

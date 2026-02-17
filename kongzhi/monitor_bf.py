@@ -66,16 +66,11 @@ def check_point(folder_path, file_name, start_time, timeout=3600, is_show=0):
             print("\n")
         return True
     else:
-        # copy_folder_to_database(folder_path, base_path)
         return False
 
 
 def main_kongzhi(folder_path):
 
-    #=============== 其它文件目录====================
-    temp_path = os.path.join(base_path, "kongzhi/test/database_test/temp_file") #测试用路径
-    #port_path = folder_path.replace("sandbox2", "sandbox") #接口用路径
-    #===============================================
 
     start_time = time.time()
 
@@ -128,7 +123,6 @@ def main_kongzhi(folder_path):
     yolo_result_path = os.path.join(folder_path, "yolo_result")
     # 1. 监测 folder_path 中是否有 yolo_result 文件夹
     if os.path.exists(yolo_result_path) and os.path.isdir(yolo_result_path):
-        end_file_path = os.path.join(yolo_result_path, "end.txt")
         max_wait = 15
         if not check_point(yolo_result_path, "end.txt", start_time, timeout=max_wait):
             print(f"等待超时 ({max_wait}s)，未发现 'end.txt' 文件。默认泰国b超部分提取完毕,准备开始合并...")
@@ -203,6 +197,36 @@ def main_kongzhi(folder_path):
     time.sleep(0.2) #等待文件稳定
     # 综合分析
     run_eval_core(folder_path)
+
+    # ==================== 追加processed_report_info.json 汇总到 eval_train_dataset.jsonl  ====================
+    try:
+        processed_json_path = os.path.join(folder_path, "processed_report_info.json")
+        if os.path.exists(processed_json_path):
+            dst_dir = os.path.join(base_path, "eval_core", "dataset")
+            dst_dataset_jsonl = os.path.join(dst_dir, "eval_train_dataset.jsonl")
+            os.makedirs(dst_dir, exist_ok=True)
+
+            with open(processed_json_path, "r", encoding="utf-8") as f:
+                processed_data = json.load(f)
+            
+            # 获取所有子报告 info
+            infos = processed_data.get("info", [])
+            
+            with open(dst_dataset_jsonl, "a", encoding="utf-8") as dst_f:
+                for sub_report in infos:
+                    # 构造 train.py 识别的单样本格式：{"info": [sub_report]}
+                    sample_to_save = {
+                        "info": [sub_report],
+                        "total_img_number": processed_data.get("total_img_number", 0),
+                        "solvable_img_number": processed_data.get("solvable_img_number", 0)
+                    }
+                    # 将样本转为单行字符串追加
+                    dst_f.write(json.dumps(sample_to_save, ensure_ascii=False) + "\n")
+
+            print(f"已将 {len(infos)} 条样本从 {processed_json_path} 追加至 {dst_dataset_jsonl}")
+    except Exception as e:
+        print(f"追加 eval_train_dataset.jsonl 失败: {e}")
+    # ===================================================================================
 
     # 大语言模型润色 api
     model_type = 2
