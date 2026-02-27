@@ -19,6 +19,7 @@ from module_ocr_data_process import convert_and_save_target_format
 from module_ocr_data_process import get_uncertainty
 from module_ocr_data_process import get_diagnosis_text_out
 from module_ocr_data_process import get_img_meta
+from module_ocr_data_process import find_all_match_key_alias, pick_best_match_by_unit_symbols
 
 from module_ocr_data_find import FindMethod
 
@@ -31,6 +32,7 @@ from keywords import SPECIAL_EXTRACTOR_LIST, SPECIAL_EXTRACTOR_MAP
 from keywords import FEMALE_ONLY_REPORT, MALE_ONLY_REPORT
 from keywords import UNABLE_TO_PROCESS_REPORT_LIST
 from keywords import TEMPLATE_KEYWORD_MAP 
+from keywords import MULTI_MATCH_UNIT_PREFERENCE
 from patch import check_template_type 
 
 from report_structure import REPORT_REGISTRY
@@ -39,12 +41,14 @@ from report_structure import REPORT_REGISTRY
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'llm_polish')))
 from llm_keywords import ali_api_text_key_001, ali_api_vision_key_001
 
-parser = argparse.ArgumentParser()
-parser.add_argument("--task_record_path", type=str, required=True)
-parser.add_argument("--save_result_path", type=str, required=True)
-parser.add_argument("--output_train_info_path", type=str, required=True)
-parser.add_argument("--output_report_info_path", type=str, required=True)
-args = parser.parse_args()
+
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--task_record_path", type=str, required=True)
+    parser.add_argument("--save_result_path", type=str, required=True)
+    parser.add_argument("--output_train_info_path", type=str, required=True)
+    parser.add_argument("--output_report_info_path", type=str, required=True)
+    return parser.parse_args()
 
 def build_training_input_for_image( reports: list) -> str:
     """
@@ -207,23 +211,52 @@ def assemble_report_for_image(report_type, extracted_data, finder, image_user_in
             target_aliases = template_aliases + default_aliases
 
             # 在当前图片的 extracted_data 中查找
-            matched_key, matched_alias = find_best_match_key(
-                target_aliases,
-                extracted_data.keys(),
-                report_type,
-                i,
-                template_id
-            )
+            unit_pref_cfg = MULTI_MATCH_UNIT_PREFERENCE.get(report_type, {}).get(i, None)
 
-            hit = True if matched_key else False
-            hit_key = matched_alias if matched_key else ""
-       
-            print(f"{target_name}命中词库中关键词——>{hit_key}" if hit else "未命中词库中关键词")
+            if unit_pref_cfg:
+                # Collect all matched candidates, then prefer the one whose unit contains configured symbol(s)
+                unit_symbols = unit_pref_cfg.get("unit_symbols", []) if isinstance(unit_pref_cfg, dict) else []
 
-            if matched_key:
+                all_hits = find_all_match_key_alias(
+                    target_aliases,
+                    extracted_data.keys(),
+                    report_type,
+                    i,
+                    template_id
+                )
 
-                item = extracted_data[matched_key]
-                merged_data[8][i], merged_data[9][i] = item.get('val', -1), item.get('unit', "")
+                if len(all_hits) == 1:
+                    chosen_key, chosen_alias = all_hits[0]
+                else:
+                    chosen_key, chosen_alias = pick_best_match_by_unit_symbols(extracted_data, all_hits, unit_symbols)
+
+                hit = True if chosen_key else False
+                hit_key = chosen_alias if chosen_key else ""
+
+                print(f"{target_name}命中词库中关键词——>{hit_key}" if hit else "未命中词库中关键词")
+
+                if chosen_key:
+                    item = extracted_data.get(chosen_key, {}) or {}
+                    merged_data[8][i], merged_data[9][i] = item.get('val', -1), item.get('unit', "")
+
+            else:
+                matched_key, matched_alias = find_best_match_key(
+                    target_aliases,
+                    extracted_data.keys(),
+                    report_type,
+                    i,
+                    template_id
+                )
+
+                hit = True if matched_key else False
+                hit_key = matched_alias if matched_key else ""
+
+                print(f"{target_name}命中词库中关键词——>{hit_key}" if hit else "未命中词库中关键词")
+
+                if matched_key:
+                    item = extracted_data.get(matched_key, {}) or {}
+                    merged_data[8][i], merged_data[9][i] = item.get('val', -1), item.get('unit', "")
+
             
     # 特殊报告处理
     elif report_type in SPECIAL_EXTRACTOR_MAP:
@@ -270,7 +303,13 @@ def assemble_report_for_image(report_type, extracted_data, finder, image_user_in
     temp_unit =merged_data[9]
 
     #2.智能二次提取 值/单位
-    merged_data[8], merged_data[9] = finder.smart_secondary_extraction(report_type, target_name_list, merged_data[8], merged_data[9], ali_api_text_key_001)
+    merged_data[8], merged_data[9] = finder.smart_secondary_extraction(
+        report_type, 
+        target_name_list, 
+        merged_data[8], 
+        merged_data[9], 
+        ali_api_text_key_001
+    )
     print(f"P2 智能二次提取：{temp_val}/{temp_unit}-->{merged_data[8]}/{merged_data[9]}")
     temp_val = merged_data[8]
     temp_unit =merged_data[9]
@@ -463,7 +502,14 @@ def process_single_image_pipeline(item, ocr_text, global_context, is_collect_tra
 
     return image_name, image_reports, llm_output_json, img_size_str, img_w_h, train_required_info
 
-if __name__ == '__main__':
+def main(args):
+
+    print("=== DEBUG ===")
+    print("sys.executable:", sys.executable)
+    print("cwd:", os.getcwd())
+    print("PATH(head):", os.environ.get("PATH","")[:300])
+    print("=== DEBUG ===")
+
     # 信息路径
     TASK_RECORD_INFO_PATH = args.task_record_path
     OCR_RESULT_PATH = args.save_result_path
@@ -597,3 +643,10 @@ if __name__ == '__main__':
         print(f"[Error] 保存目标格式失败: {e}")
         
     print("\n所有流程完成。")
+
+    return 0
+
+
+if __name__ == '__main__':
+    args = parse_args()
+    raise SystemExit(main(args))

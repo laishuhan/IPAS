@@ -344,6 +344,34 @@ SECONDARY_EXTRACTION_CONFIG = {
     },
 }
 
+# =============================
+# Multi-match unit preference
+# =============================
+# Some indicators may be extracted with multiple synonymous keys by the LLM.
+# When that happens, and more than one key matches the same indicator, we can
+# prefer the candidate whose unit contains the configured unit symbol(s).
+#
+# Structure:
+#   MULTI_MATCH_UNIT_PREFERENCE = {
+#       report_type (int): {
+#           indicator_index (int): {
+#               "unit_symbols": ["%", "％"]  # choose candidate whose unit contains any of these
+#           }
+#       }
+#   }
+#
+# Notes:
+# - Only applied when >=2 candidates are matched for the same indicator.
+# - If only one candidate is matched, it is used as-is.
+# - If no candidate contains the preferred unit symbol(s), the first match in alias order is used.
+MULTI_MATCH_UNIT_PREFERENCE = {
+    # Sperm report (type=3): prefer percentage unit for Motility and Progressive motile
+    3: {
+        6: {"unit_symbols": ["%", "％"]},  # 精子总活力(Motility) aka 总活力(PR+NP)
+        7: {"unit_symbols": ["%", "％"]},  # 前向精子百分率(Progressive motile) aka 前向运动精子(PR)
+    }
+}
+
 
 
 

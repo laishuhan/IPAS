@@ -9,6 +9,13 @@
 #0210-15:36 jww add "dRVVT-R","dRVVT-S","dRVVT-C"(type 20)
 #0210-16:03 jww add "精子DNA碎片指数检测(SDFI)" (type35)
 #0211-16:39 jww add "类风湿因子" (type 24)
+#0214-10:18 jww add "狼疮抗凝物确定试验(LA2)","狼疮抗凝物初筛试验1(LA1)","狼疮初筛/狼疮确定(标准化比值)" (type 30)
+#0214-13:38 jww add "单核细胞比值","淋巴细胞数","淋巴细胞比值","淋巴细胞数","淋巴细胞比值","中性粒细胞数","中性粒细胞比值","白细胞" (type 10)
+#0214-14:02 jww add "沙眼衣原体DNA定性"(type 11)
+#0214-14:10 jww add "单纯疱疹1型-IgM定量","单纯疱疹2型-IgM定量","巨细胞病毒IgM定量","风疹病毒IgM定量","弓形虫抗体IgM定量" (type 13)
+#0214-14:16 jww add"25-OH维生素D"(type 20)
+#0227-10:19 jww add "前向运动精子(PR,%)","总活力(PR+NP,%)"(type 3)
+#0227-10:41 jww add "PR+NP百分率","前向运动精子(PR)百分率"(type 3)
 class General_Report: 
     def __init__(self, report_name, index, unit_conversions, keywords=None):
         self.report_name = report_name
@@ -89,8 +96,8 @@ sperm_report = General_Report(
         ["白细胞浓度(WBC)", "白细胞浓度", "WBC", "圆细胞", "白细胞"],
         ["精子浓度(Concentration)", "精子浓度", "Concentration", "密度","精子浓度", ],
         ["总精子数(Total Concentration)", "总精子数", "Total Concentration", "精子总数", "精子总数"],
-        ["精子总活力(Motility)", "精子总活力", "Motility", "PR+NP", "总活力(PR+NP)","总精子活动率","精子总活动率"],
-        ["前向精子百分率(Progressive motile)", "前向精子百分率", "Progressive motile", "a+b", "前向运动", "前向运动精子百分率(PR)","前向运动率","前向运动精子(PR)"],
+        ["精子总活力(Motility)", "精子总活力", "Motility", "PR+NP", "总活力(PR+NP)","总精子活动率","精子总活动率","总活力(PR+NP,%)","PR+NP百分率"],
+        ["前向精子百分率(Progressive motile)", "前向精子百分率", "Progressive motile", "a+b", "前向运动", "前向运动精子百分率(PR)","前向运动率","前向运动精子(PR)","前向运动精子(PR,%)","前向运动精子(PR)百分率"],
         ["精子正常形态率(Morphology)", "精子正常形态率", "Morphology", "正常形态率", "正常形态精子"],
         ["血红蛋白A(HBA)", "血红蛋白A", "HBA", "精子头部结合水解酶"],
         ["快速前向运动精子(A)"],
@@ -281,22 +288,22 @@ blood_routine_report = General_Report(
         "有核红细胞百分比(NRBC%)"
     ],
     keywords = [
-        ["白细胞计数(WBC)", "白细胞计数", "WBC", "白细胞数目"],
+        ["白细胞计数(WBC)", "白细胞计数", "WBC", "白细胞数目","白细胞"],
         ["红细胞分布宽度变异系数(RDW-CV)", "红细胞分布宽度变异系数", "RDW-CV", "RDWCV"],
         ["红细胞计数(RBC)", "红细胞计数", "RBC", "红细胞数目"],
         ["血小板计数(PLT)", "血小板计数", "PLT", "血小板数目"],
         ["血小板分布宽度(PDW)", "血小板分布宽度", "PDW"],
         ["血小板压积(PCT)", "血小板压积", "PCT"],
-        ["中性粒细胞百分比(NEU%)", "中性粒细胞百分比", "NEU%", "GR%", "中性粒细胞百分数"],
-        ["中性粒细胞计数(NEU#)", "中性粒细胞计数", "NEU#", "GR#", "中性粒细胞绝对值"],
+        ["中性粒细胞百分比(NEU%)", "中性粒细胞百分比", "NEU%", "GR%", "中性粒细胞百分数","中性粒细胞比值"],
+        ["中性粒细胞计数(NEU#)", "中性粒细胞计数", "NEU#", "GR#", "中性粒细胞绝对值","中性粒细胞数"],
         ["平均血小板体积(MPV)", "平均血小板体积", "MPV"],
         ["单核细胞计数(MON#)", "单核细胞计数", "MON#", "MO#", "单核细胞绝对值"],
         ["单核细胞百分比(MON%)", "单核细胞百分比", "MON%", "MO%"],
         ["平均红细胞体积(MCV)", "平均红细胞体积", "MCV"],
         ["平均红细胞血红蛋白浓度(MCHC)", "平均红细胞血红蛋白浓度", "MCHC", "平均血红蛋白浓度"],
         ["红细胞血红蛋白含量(HCH)", "红细胞血红蛋白含量", "HCH", "MCH","平均红细胞血红蛋白含量", "平均血红蛋白含量"],
-        ["淋巴细胞计数(LYM#)", "淋巴细胞计数", "LYM#", "淋巴细胞绝对值"],
-        ["淋巴细胞百分比(LYM%)", "淋巴细胞百分比", "LYM%", "淋巴细胞百分数"],
+        ["淋巴细胞计数(LYM#)", "淋巴细胞计数", "LYM#", "淋巴细胞绝对值","淋巴细胞数"],
+        ["淋巴细胞百分比(LYM%)", "淋巴细胞百分比", "LYM%", "淋巴细胞百分数","淋巴细胞比值"],
         ["血红蛋白(HGB)", "血红蛋白", "HGB", "Hb"],
         ["红细胞比容(HCT)", "红细胞比容", "HCT", "红细胞压积","红细胞比积"],
         ["嗜酸性粒细胞百分比(EO%)", "嗜酸性粒细胞百分比", "EO%"],
@@ -308,7 +315,7 @@ blood_routine_report = General_Report(
         ["平均红细胞血红蛋白量(MCH)", "平均红细胞血红蛋白量", "MCH"],
         ["红细胞分布宽度(RDW)", "红细胞分布宽度", "RDW", "RDW-SD"],
         ["有核红细胞计数(NRBC#)", "有核红细胞计数", "NRBC#", "NRBC"],
-        ["有核红细胞百分比(NRBC%)", "有核红细胞百分比", "NRBC%"]
+        ["有核红细胞百分比(NRBC%)", "有核红细胞百分比", "NRBC%","单核细胞比值"]
     ],
     unit_conversions = [
         [], # 白细胞计数(WBC)
@@ -349,7 +356,7 @@ ct_report = General_Report(
         "衣原体DNA(CT-DNA)"
     ],
     keywords = [
-        ["衣原体DNA(CT-DNA)", "衣原体DNA", "CT-DNA", "沙眼衣原体核酸","衣原体"]
+        ["衣原体DNA(CT-DNA)", "衣原体DNA", "CT-DNA", "沙眼衣原体核酸","衣原体","沙眼衣原体DNA定性"]
     ],
     unit_conversions = [
         []  # 衣原体DNA(CT-DNA)
@@ -409,15 +416,15 @@ torch_report = General_Report(
         "B19细小病毒IgG(B19-IgG)"
     ],
     keywords = [
-        ["巨细胞病毒IgM(CMV-IgM)", "巨细胞病毒IgM", "CMV-IgM"],
+        ["巨细胞病毒IgM(CMV-IgM)", "巨细胞病毒IgM", "CMV-IgM","巨细胞病毒IgM定量"],
         ["巨细胞病毒IgG(CMV-IgG)", "巨细胞病毒IgG", "CMV-IgG"],
-        ["弓形虫IgM(TOX-IgM)", "弓形虫IgM", "TOX-IgM"],
+        ["弓形虫IgM(TOX-IgM)", "弓形虫IgM", "TOX-IgM","弓形虫抗体IgM定量"],
         ["弓形虫IgG(TOX-IgG)", "弓形虫IgG", "TOX-IgG"],
-        ["风疹病毒IgM(RV-IgM)", "风疹病毒IgM", "RV-IgM", "Rubella-IgM"],
+        ["风疹病毒IgM(RV-IgM)", "风疹病毒IgM", "RV-IgM", "Rubella-IgM","风疹病毒IgM定量"],
         ["风疹病毒IgG(RV-IgG)", "风疹病毒IgG", "RV-IgG", "Rubella-IgG"],
-        ["单纯疱疹病毒1型IgM(HSV-1-IgM)", "单纯疱疹病毒1型IgM", "HSV-1-IgM", "HSV I IgM"],
+        ["单纯疱疹病毒1型IgM(HSV-1-IgM)", "单纯疱疹病毒1型IgM", "HSV-1-IgM", "HSV I IgM","单纯疱疹1型-IgM定量"],
         ["单纯疱疹病毒1型IgG(HSV-1-IgG)", "单纯疱疹病毒1型IgG", "HSV-1-IgG", "HSV I IgG"],
-        ["单纯疱疹病毒2型IgM(HSV-2-IgM)", "单纯疱疹病毒2型IgM", "HSV-2-IgM", "HSV II IgM"],
+        ["单纯疱疹病毒2型IgM(HSV-2-IgM)", "单纯疱疹病毒2型IgM", "HSV-2-IgM", "HSV II IgM","单纯疱疹2型-IgM定量"],
         ["单纯疱疹病毒2型IgG(HSV-2-IgG)", "单纯疱疹病毒2型IgG", "HSV-2-IgG", "HSV II IgG"],
         ["B19细小病毒IgM(B19-IgM)", "B19细小病毒IgM", "B19-IgM"],
         ["B19细小病毒IgG(B19-IgG)", "B19细小病毒IgG", "B19-IgG"]
@@ -616,7 +623,7 @@ preconception_basic_health_report = General_Report(
         "25-羟维生素D(25-OH-VD)"
     ],
     keywords = [
-        ["25-羟维生素D(25-OH-VD)", "25-羟维生素D", "25-OH-VD", "维生素D","25OH维生素D","25羟基维生素D","α25羟基维生素D"]
+        ["25-羟维生素D(25-OH-VD)", "25-羟维生素D", "25-OH-VD", "维生素D","25OH维生素D","25羟基维生素D","α25羟基维生素D","25-OH维生素D"]
     ],
     unit_conversions = [
         []  # 25-羟维生素D(25-OH-VD)
@@ -833,9 +840,9 @@ lupus_report = General_Report(
         "狼疮初筛/狼疮确定(LA1/LA2)"
     ],
     keywords = [
-        ["LA1", "狼疮抗凝物筛选", "DRVVT Screen","dRVVT-S"],
-        ["LA2", "狼疮抗凝物确证", "DRVVT Confirm","dRVVT-C"],
-        ["LA1/LA2", "比值", "Ratio", "S/C","dRVVT-R"]
+        ["LA1", "狼疮抗凝物筛选", "DRVVT Screen","dRVVT-S","狼疮抗凝物初筛试验1(LA1)"],
+        ["LA2", "狼疮抗凝物确证", "DRVVT Confirm","dRVVT-C","狼疮抗凝物确定试验(LA2)"],
+        ["LA1/LA2", "比值", "Ratio", "S/C","dRVVT-R","狼疮初筛/狼疮确定(标准化比值)"]
     ],
     unit_conversions = [
         [], # LA1

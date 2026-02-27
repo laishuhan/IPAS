@@ -1,327 +1,284 @@
-# === main_eval.py ===
+# main_eval.py
+# -*- coding: utf-8 -*-
+"""
+main_eval.py  (ENTRYPOINT, config-driven)
+-----------------------------------------
+融合版推理入口：加载 bundle -> preprocess -> encode -> route -> risk controls -> (optional explain) -> 输出
+
+所有阈值与开关由 config.py 驱动：
+- cfg["risk"]["tau_risk"], cfg["risk"]["tau_epi"]
+- cfg["explain"]["enable"], cfg["explain"]["top_k"]
+
+命令行只负责：
+- --config_path: 指定 JSON 配置文件
+- --model_root / --input_path / --output_path / --save_json: 路径覆盖（可选）
+- --override: 简单 key=value 覆盖（可选）
+"""
+
 from __future__ import annotations
 
 import argparse
 import json
 import os
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List
 
 import numpy as np
 
-from models import (
-    NeedInfo,
-    build_context_from_processed,
-    extract_quality,
-    extract_indicator_vector,
-    GenerativeRiskModel,
-    build_default_lfs,
-    BayesianSoftmax,
-)
+from config import get_default_config, load_config
 
-from utils import (
-    TemperatureCalibrator,
-    ConformalAPS,
-    abstain_decision_multiclass,
-    build_evidence_chain,
-    probability_constrained_recourse,
-    topk_contrib_softmax_target,
-    selective_risk,   # NEW
-)
+from preprocess import preprocess_raw_sample, get_report_type, read_json, read_jsonl, write_text
+from encoder import encode
+from bundle import load_bundle, pick_expert_key
+from risk_model import predict_with_risk_controls
+from explain import build_evidence_chain, topk_contrib_softmax_target
 
 
-from data_adapter import (
-    map_status_to_severity,
-    severity_to_abnormal_binary,
-)
+# =========================================================
+# IO
+# =========================================================
 
-from feature_space import featurize_sample
+def load_input(path: str) -> List[Dict[str, Any]]:
+    if not os.path.exists(path):
+        raise FileNotFoundError(f"Input not found: {path}")
 
+    # 1) jsonl
+    if path.lower().endswith(".jsonl"):
+        data = read_jsonl(path)
+        if not data:
+            raise ValueError("Empty jsonl input")
+        return data
 
-def _ensure_dir_for_file(path: str) -> None:
-    d = os.path.dirname(path)
-    if d:
-        os.makedirs(d, exist_ok=True)
+    obj = read_json(path)
 
+    # 2) list
+    if isinstance(obj, list):
+        return obj
 
-def _risk_level_cn_3class(y_pred: int, abstain: bool) -> str:
-    if abstain:
-        return "拒判（建议人工复核）"
-    if y_pred == 2:
-        return "重度异常"
-    if y_pred == 1:
-        return "轻度异常"
-    return "正常"
+    # 3) dict wrappers
+    if isinstance(obj, dict):
+        # original supported format
+        if isinstance(obj.get("dataset", None), list):
+            return obj["dataset"]
 
+        # ✅ your fixed format: {"info": [ {sample0}, {sample1}, ... ], ...}
+        # We convert it to: [ {"info":[sample0]}, {"info":[sample1]}, ... ]
+        if isinstance(obj.get("info", None), list) and len(obj["info"]) > 0 and isinstance(obj["info"][0], dict):
+            return [{"info": [it]} for it in obj["info"]]
 
-def _build_need_info_from_processed(processed: Dict[str, Any]) -> List[Any]:
-    info_list = processed.get("info", [])
-    if not info_list:
-        raise ValueError("processed_report_info.json 缺少 info 字段")
-
-    first = info_list[0]
-    sex = first.get("sex", -1)
-    age = first.get("age", -1)
-    period_info = first.get("period_info", None)
-    preg_info = first.get("preg_info", None)
-
-    legacy = [[sex, age, period_info, preg_info]]
-    for report in info_list:
-        r_type = report.get("report_type", -1)
-        indicators = report.get("indicator_analysis", []) or []
-        codes = []
-        for it in indicators:
-            sev = map_status_to_severity(it)
-            b = severity_to_abnormal_binary(sev)
-            codes.append(-1 if b is None else int(b))
-        legacy.append([r_type, codes])
-
-    return legacy
+    raise ValueError("Unsupported input json format. Expect list or {'dataset': list} or jsonl or {'info': list}.")
 
 
-def _load_need_ctx_q(sample: Dict[str, Any]) -> Tuple[NeedInfo, Dict[str, Any], Any]:
-    legacy = _build_need_info_from_processed(sample)
-    context = build_context_from_processed(sample)
-    need = NeedInfo.from_legacy(legacy)
-    Q = extract_quality(need, context)
-    return need, context, Q
+def _fmt_vec(v: np.ndarray, k: int = 4) -> str:
+    v = np.asarray(v, dtype=float).reshape(-1)
+    return "[" + ", ".join(f"{x:.{k}f}" for x in v) + "]"
+
+def parse_overrides(pairs: List[str]) -> Dict[str, Any]:
+    out: Dict[str, Any] = {}
+    for s in pairs:
+        if "=" not in s:
+            continue
+        k, v = s.split("=", 1)
+        k = k.strip()
+        v = v.strip()
+
+        vv: Any
+        if v.lower() in ("true", "false"):
+            vv = (v.lower() == "true")
+        else:
+            try:
+                if "." in v:
+                    vv = float(v)
+                else:
+                    vv = int(v)
+            except Exception:
+                try:
+                    vv = float(v)
+                except Exception:
+                    vv = v
+
+        parts = k.split(".")
+        cur = out
+        for p in parts[:-1]:
+            if p not in cur or not isinstance(cur[p], dict):
+                cur[p] = {}
+            cur = cur[p]
+        cur[parts[-1]] = vv
+    return out
+
+def deep_update(base: Dict[str, Any], new: Dict[str, Any]) -> Dict[str, Any]:
+    for k, v in new.items():
+        if isinstance(v, dict) and k in base and isinstance(base[k], dict):
+            base[k] = deep_update(base[k], v)
+        else:
+            base[k] = v
+    return base
 
 
-def load_bundle(model_dir: str) -> Tuple[BayesianSoftmax, TemperatureCalibrator, ConformalAPS, Dict[str, Any]]:
-    npz_path = os.path.join(model_dir, "softmax_model.npz")
-    cal_path = os.path.join(model_dir, "calibrator.json")
-    conf_path = os.path.join(model_dir, "conformal.json")
-    schema_path = os.path.join(model_dir, "schema.json")
+# =========================================================
+# Main
+# =========================================================
 
-    for p in (npz_path, cal_path, conf_path, schema_path):
-        if not os.path.exists(p):
-            raise FileNotFoundError(f"缺少模型文件: {p}")
-
-    data = np.load(npz_path)
-    W_map = data["W_map"]
-    Sigma = data["Sigma"]
-    n_classes = int(data["n_classes"])
-    feature_dim = int(data["feature_dim"])
-
-    clf = BayesianSoftmax(n_classes=n_classes)
-    clf.W_map = W_map
-    clf.Sigma = None if Sigma.shape == (1, 1) else Sigma
-
-    with open(cal_path, "r", encoding="utf-8") as f:
-        calj = json.load(f)
-    temp = TemperatureCalibrator()
-    temp.T = float(calj.get("T", 1.0))
-
-    with open(conf_path, "r", encoding="utf-8") as f:
-        confj = json.load(f)
-    conf = ConformalAPS(alpha=float(confj.get("alpha", 0.1)))
-    conf.qhat = confj.get("qhat", None)
-    if conf.qhat is not None:
-        conf.qhat = float(conf.qhat)
-
-    with open(schema_path, "r", encoding="utf-8") as f:
-        sj = json.load(f)
-
-    schema = sj.get("schema", {})
-    meta = sj.get("train_meta", {})
-    extra = {"schema": schema, "train_meta": meta, "feature_dim": feature_dim}
-
-    if clf.W_map.shape[0] != feature_dim:
-        raise ValueError("模型包 feature_dim 与权重维度不一致，模型包可能损坏。")
-
-    return clf, temp, conf, extra
-
-
-def pick_model_dir(model_root: str, report_type: int) -> Tuple[str, str]:
-    """
-    路由优先级：type -> cluster -> global
-    返回：(model_dir, route_kind)
-    """
-    type_dir = os.path.join(model_root, f"type_{report_type}")
-    if os.path.isdir(type_dir) and os.path.exists(os.path.join(type_dir, "softmax_model.npz")):
-        return type_dir, "type"
-
-    cmap_path = os.path.join(model_root, "cluster_map.json")
-    if os.path.exists(cmap_path):
-        with open(cmap_path, "r", encoding="utf-8") as f:
-            cj = json.load(f)
-        cmap = cj.get("cluster_map", {})
-        cid = cmap.get(str(report_type), None)
-        if cid is not None:
-            cdir = os.path.join(model_root, f"cluster_{int(cid)}")
-            if os.path.isdir(cdir) and os.path.exists(os.path.join(cdir, "softmax_model.npz")):
-                return cdir, f"cluster_{int(cid)}"
-
-    global_dir = os.path.join(model_root, "global")
-    return global_dir, "global"
-
-def main():
-        
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-
+def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--processed_report_info_path", type=str, required=True)
-    ap.add_argument("--eval_info_path", type=str, required=True)
 
-    default_root = os.path.join(current_dir, "model")
-    ap.add_argument("--model_root", type=str, default=default_root, help="模型目录根（默认: 同级中 model）")
+    ap.add_argument("--config_path", type=str, default="", help="可选：JSON 配置文件路径")
+    ap.add_argument("--model_root", type=str, default="", help="可选：覆盖 cfg.global.model_root")
+    ap.add_argument("--processed_report_info_path", type=str, default="", help="可选：覆盖 cfg.paths.processed_report_info_path")
+    ap.add_argument("--eval_info_path", type=str, default="", help="可选：覆盖 cfg.paths.eval_info_path")
+    ap.add_argument("--save_json", type=str, default="", help="可选：保存逐样本结果 json")
+    ap.add_argument("--override", type=str, nargs="*", default=[], help="可选：覆盖配置项，如 risk.tau_risk=0.25 explain.enable=true")
     args = ap.parse_args()
 
+    # 0) config
+    cfg = get_default_config()
+    if args.config_path:
+        cfg = load_config(args.config_path, base_cfg=cfg)
+    if args.override:
+        cfg = deep_update(cfg, parse_overrides(args.override))
 
-    # --- 增加健壮性检查 ---
-    try:
-        with open(args.processed_report_info_path, "r", encoding="utf-8") as f:
-            processed = json.load(f)
-    except Exception as e:
-        print(f"[Error] 无法读取或解析 JSON 文件: {e}")
-        return
+    script_dir = os.path.dirname(os.path.abspath(__file__))
 
-    # 检查 info 字段是否存在且不为空
-    infos = processed.get("info", [])
-    if not isinstance(infos, list) or len(infos) == 0:
-        error_msg = (
-            "评估终止：输入 JSON 缺少有效的 'info' 数据。\n"
-            f"文件路径: {args.processed_report_info_path}\n"
-            "可能原因：OCR 未能识别出任何有效报告内容或数据清洗逻辑异常。"
+    default_model_root = os.path.join(script_dir, "model")
+    model_root = args.model_root or default_model_root
+    cfg.setdefault("global", {})
+    cfg["global"]["model_root"] = model_root
+
+    cfg.setdefault("paths", {})
+    input_path = args.processed_report_info_path
+    
+    output_path = args.eval_info_path
+    
+    save_json_path = args.save_json
+
+
+    cfg["paths"]["input_path"] = input_path
+    cfg["paths"]["output_path"] = output_path
+    if save_json_path:
+        cfg["paths"]["save_json"] = save_json_path
+
+    # thresholds / switches
+    tau_risk = float(cfg["risk"]["tau_risk"])
+    tau_epi = float(cfg["risk"]["tau_epi"])
+    do_explain = bool(cfg["explain"]["enable"])
+    top_k = int(cfg["explain"]["top_k"])
+
+    # 1) load bundle
+    bundle = load_bundle(model_root)
+    encoder = bundle.encoder
+
+    # 2) load input
+    dataset = load_input(input_path)
+    if len(dataset) == 0:
+        raise ValueError("Empty input dataset")
+
+    lines: List[str] = []
+    json_out: List[Dict[str, Any]] = []
+
+    lines.append("=== Fusion Inference Report (config-driven) ===")
+    lines.append(f"model_root: {model_root}")
+    lines.append(f"input_path: {input_path}")
+    lines.append(f"n_samples: {len(dataset)}")
+    lines.append(f"risk: tau_risk={tau_risk}, tau_epi={tau_epi}")
+    lines.append(f"explain: enable={do_explain}, top_k={top_k}")
+    lines.append("")
+
+    for idx, sample in enumerate(dataset):
+        rt = int(get_report_type(sample, default=-1))
+        expert_key = pick_expert_key(rt, bundle)
+        expert = bundle.experts[expert_key]
+
+        x32 = preprocess_raw_sample(sample)  # (1,32)
+        z = encode(encoder, x32)[0]          # (d,)
+
+        out = predict_with_risk_controls(
+            z=z,
+            head=expert.head,
+            calibrator=expert.calibrator,
+            conformal=expert.conformal,
+            tau_risk=tau_risk,
+            tau_epi=tau_epi,
         )
-        _ensure_dir_for_file(args.eval_info_path)
-        with open(args.eval_info_path, "w", encoding="utf-8") as f:
-            f.write(error_msg)
-        print(f"[Warning] {error_msg}")
-        return # 优雅退出，不抛出 Crash
 
-    # 此时可以安全访问 [0]
-    info0 = infos[0]
-    rt = int(info0.get("report_type", -1))
-    # --- 检查结束 ---
+        # explanation
+        contribs = []
+        if do_explain and expert.head.W_map is not None:
+            try:
+                contribs = topk_contrib_softmax_target(
+                    x=z,
+                    W=expert.head.W_map,
+                    p=out["p_final"],
+                    target_labels=[1, 2],
+                    feature_names=None,
+                    top_k=top_k,
+                )
+            except Exception as e:
+                contribs = [{"feature": "contrib_error", "error": str(e)}]
 
-    model_dir, route_kind = pick_model_dir(args.model_root, rt)
-    clf, temp, conf, extra = load_bundle(model_dir)
-    schema = extra["schema"]
+        p_model = {
+            "route": {"report_type": rt, "expert_key": expert_key, "expert_kind": expert.kind},
+            "pred": int(out["pred"]),
+            "pred_set": list(map(int, out["pred_set"])),
+            "abstain": bool(out["abstain"]),
+            "p_final": out["p_final"].tolist(),
+            "p_abnormal": float(out["p_abnormal"]),
+            "p_severe": float(out["p_severe"]),
+            "entropy": float(out["entropy"]),
+            "epistemic": float(out["epistemic"]),
+            "aleatoric": float(out["aleatoric"]),
+        }
 
-    x_vec = featurize_sample(processed, schema)
-    if x_vec.shape[0] != clf.W_map.shape[0]:
-        raise ValueError(f"特征维度不一致：x={x_vec.shape[0]} vs model={clf.W_map.shape[0]}。请确认 train/eval 同一套 schema。")
-
-    need, context, Q = _load_need_ctx_q(processed)
-    gen_model = GenerativeRiskModel()
-    _ = gen_model.posterior(need, Q)
-
-    lfs = build_default_lfs()
-    lf_votes_single = np.array([lf.fn(need, Q, context) for lf in lfs], dtype=int)
-
-    pred_u = clf.predictive_with_uncertainty(x_vec)
-    p_raw = pred_u["p"]
-    entropy = pred_u["entropy"]
-    epistemic = pred_u["epistemic"]
-    aleatoric = pred_u["aleatoric"]
-
-    p_final = temp.transform(p_raw.reshape(1, -1))[0]
-    pred_set = conf.predict_set(p_final) if conf.qhat is not None else [int(np.argmax(p_final))]
-
-    abstain = abstain_decision_multiclass(
-        p=p_final,
-        epistemic=epistemic,
-        tau_risk=0.3,
-        tau_epi=0.5,
-    )
-
-    y_pred_final = int(np.argmax(p_final))
-    p_abn = float(p_final[1] + p_final[2])
-    p_sev = float(p_final[2])
-    risk_level = _risk_level_cn_3class(y_pred_final, abstain)
-
-    evidence_chain = build_evidence_chain(
-        need=need,
-        Q=Q,
-        p_model={
-            "p_raw": p_raw.tolist(),
-            "p_final": p_final.tolist(),
-            "p_abnormal": p_abn,
-            "p_severe": p_sev,
-            "pred_set": pred_set,
-            "route_kind": route_kind,
-            "model_dir_used": model_dir,
-        },
-        lf_names=[lf.name for lf in lfs],
-        lf_outputs=lf_votes_single,
-        multiclass_x=x_vec,
-        multiclass_W=clf.W_map,
-        multiclass_p=p_final,
-        target_labels=[1, 2],   # explain p1+p2
-        feature_names=None,     # 指标名不可靠：不填
-        top_k=8,
-    )
-
-    try:
-        severe_contribs = topk_contrib_softmax_target(
-            x=x_vec, W=clf.W_map, p=p_final,
-            target_labels=[2],
+        evidence = build_evidence_chain(
+            p_model=p_model,
+            lf_names=None,
+            lf_outputs=None,
+            quality_severity=None,
+            multiclass_x=z if do_explain else None,
+            multiclass_W=expert.head.W_map if (do_explain and expert.head.W_map is not None) else None,
+            multiclass_p=np.asarray(out["p_final"]) if do_explain else None,
+            target_labels=[1, 2] if do_explain else None,
             feature_names=None,
-            top_k=8,
+            top_k=top_k,
         )
-    except Exception as e:
-        severe_contribs = [{"feature": "contrib_error", "x": 0.0, "grad": 0.0, "contribution": 0.0, "error": str(e)}]
-    evidence_chain["top_feature_contributions_severe_p2"] = severe_contribs
 
-    def prob_oracle(_: np.ndarray) -> float:
-        return float(p_abn)
+        # text output
+        lines.append(f"--- Sample {idx} ---")
+        lines.append(f"report_type: {rt}")
+        lines.append(f"expert: {expert_key} ({expert.kind})")
+        lines.append(f"p_final: {_fmt_vec(out['p_final'], k=4)}")
+        lines.append(f"pred: {out['pred']} | pred_set: {out['pred_set']} | abstain: {out['abstain']}")
+        lines.append(f"p_abnormal(p1+p2): {out['p_abnormal']:.4f} | p_severe(p2): {out['p_severe']:.4f}")
+        lines.append(f"uncertainty: entropy={out['entropy']:.4f}, epistemic={out['epistemic']:.6f}, aleatoric={out['aleatoric']:.4f}")
 
-    recourse = probability_constrained_recourse(extract_indicator_vector(need), prob_oracle, tau=0.3)
+        if do_explain:
+            lines.append("top_feature_contributions (embedding):")
+            for c in evidence.get("top_feature_contributions", [])[:top_k]:
+                feat = c.get("feature", "")
+                contrib = c.get("contribution", None)
+                grad = c.get("grad", None)
+                xv = c.get("x", None)
+                if contrib is None:
+                    lines.append(f"  - {feat}: {c}")
+                else:
+                    lines.append(f"  - {feat}: x={xv:.4f}, grad={grad:.6f}, contrib={contrib:.6f}")
+        lines.append("")
 
-    sel_stats = selective_risk(
-        p=p_final.reshape(1, -1),
-        y=np.array([y_pred_final]),
-        abstain_mask=np.array([abstain]),
-    )
+        json_out.append({
+            "index": idx,
+            "report_type": rt,
+            "expert_key": expert_key,
+            "expert_kind": expert.kind,
+            "result": out,
+            "evidence": evidence,
+        })
 
+    write_text(output_path, "\n".join(lines), encoding="utf-8")
+    print("[Saved]", output_path)
 
-    lines = [
-        "综合评估报告（三分类 | 路由：type -> cluster -> global）",
-        "================================",
-        f"report_type: {rt}",
-        f"route_kind: {route_kind}",
-        f"model_dir_used: {model_dir}",
-        "",
-        "模型输出",
-        "--------------------------------",
-        f"p_raw: {p_raw.tolist()}",
-        f"p_final: {p_final.tolist()}",
-        f"p_abnormal(p1+p2): {p_abn:.6f}",
-        f"p_severe(p2): {p_sev:.6f}",
-        f"pred_final(argmax): {y_pred_final}",
-        f"pred_set(APS): {pred_set}",
-        f"risk_level: {risk_level}",
-        f"abstain: {'是' if abstain else '否'}",
-        "",
-        "不确定性",
-        "--------------------------------",
-        f"entropy: {entropy:.6f}",
-        f"aleatoric: {aleatoric:.6f}",
-        f"epistemic: {epistemic:.6f}",
-        "",
-        "证据链（贡献：p1+p2 & p2）",
-        "--------------------------------",
-        json.dumps(evidence_chain, ensure_ascii=False, indent=2),
-        "",
-        "溯因分析（demo）",
-        "--------------------------------",
-        json.dumps(recourse, ensure_ascii=False, indent=2),
-        "",
-        "训练元信息（train_meta）",
-        "--------------------------------",
-        json.dumps(extra.get("train_meta", {}), ensure_ascii=False, indent=2),
-        "",
-        "Selective Prediction",
-        "--------------------------------",
-        json.dumps(sel_stats, ensure_ascii=False, indent=2),
-
-    ]
-
-    _ensure_dir_for_file(args.eval_info_path)
-    with open(args.eval_info_path, "w", encoding="utf-8") as f:
-        f.write("\n".join(lines))
-
-    print(f"[Success] Eval finished. Written to: {args.eval_info_path}")
+    if save_json_path:
+        os.makedirs(os.path.dirname(save_json_path) or ".", exist_ok=True)
+        with open(save_json_path, "w", encoding="utf-8") as f:
+            json.dump(json_out, f, ensure_ascii=False, indent=2)
+        print("[Saved]", save_json_path)
 
 
 if __name__ == "__main__":

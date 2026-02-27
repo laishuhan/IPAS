@@ -7,7 +7,7 @@ _os.environ.setdefault("PYTHONIOENCODING", "utf-8")
 _os.environ.setdefault("DISABLE_MODEL_SOURCE_CHECK", "True")
 
 import paddle
-from paddleocr import PaddleOCR
+#from paddleocr import PaddleOCR
 import cv2
 import os
 import json
@@ -31,43 +31,43 @@ from llm_prompt import (
 # -----------------------------
 _OCR_INSTANCE = None
 
-def setup_device_auto():
-    """
-    自动选择设备：有可用 GPU 才用 GPU，否则用 CPU。
-    注意：PaddleOCR 3.3.3 不支持 use_gpu 参数，所以使用 paddle.set_device 控制。
-    """
-    if paddle.is_compiled_with_cuda():
-        try:
-            if paddle.device.cuda.device_count() > 0:
-                paddle.set_device("gpu")
-                print("检测到可用 GPU，已设置为 gpu")
-                return
-        except Exception:
-            pass
+# def setup_device_auto():
+#     """
+#     自动选择设备：有可用 GPU 才用 GPU，否则用 CPU。
+#     注意：PaddleOCR 3.3.3 不支持 use_gpu 参数，所以使用 paddle.set_device 控制。
+#     """
+#     if paddle.is_compiled_with_cuda():
+#         try:
+#             if paddle.device.cuda.device_count() > 0:
+#                 paddle.set_device("gpu")
+#                 print("检测到可用 GPU，已设置为 gpu")
+#                 return
+#         except Exception:
+#             pass
 
-    paddle.set_device("cpu")
-    print("未检测到可用 GPU，已设置为 cpu")
+#     paddle.set_device("cpu")
+#     print("未检测到可用 GPU，已设置为 cpu")
 
 
-def create_ocr():
-    """
-    创建并返回 OCR 实例（单例复用）。
-    函数名不能变（外部有引用）。
-    """
-    global _OCR_INSTANCE
-    if _OCR_INSTANCE is not None:
-        return _OCR_INSTANCE
+# def create_ocr():
+#     """
+#     创建并返回 OCR 实例（单例复用）。
+#     函数名不能变（外部有引用）。
+#     """
+#     global _OCR_INSTANCE
+#     if _OCR_INSTANCE is not None:
+#         return _OCR_INSTANCE
 
-    setup_device_auto()
+#     setup_device_auto()
 
-    _OCR_INSTANCE = PaddleOCR(
-        text_detection_model_name="PP-OCRv5_server_det",
-        text_recognition_model_name="PP-OCRv5_server_rec",
-        use_doc_orientation_classify=True,
-        use_doc_unwarping=False,
-        use_textline_orientation=True,
-    )
-    return _OCR_INSTANCE
+#     _OCR_INSTANCE = PaddleOCR(
+#         text_detection_model_name="PP-OCRv5_server_det",
+#         text_recognition_model_name="PP-OCRv5_server_rec",
+#         use_doc_orientation_classify=True,
+#         use_doc_unwarping=False,
+#         use_textline_orientation=True,
+#     )
+#     return _OCR_INSTANCE
 
 
 def get_img_angle(image_path, method = "DEFAULT", vision_model = 0):
@@ -96,18 +96,18 @@ def get_img_angle(image_path, method = "DEFAULT", vision_model = 0):
         return int(response_vision.strip())
         
        
-    elif method == "OCR":
+    # elif method == "OCR":
 
-        ocr = create_ocr()
-        ocr_result = ocr.predict(image_path)
-        angle = 0
-        if isinstance(ocr_result, dict):
-            angle = ocr_result.get("doc_preprocessor_res", {}).get("angle", 0)
-        elif isinstance(ocr_result, list) and ocr_result:
-            first = ocr_result[0]
-            if isinstance(first, dict):
-                angle = first.get("doc_preprocessor_res", {}).get("angle", 0)
-        return angle
+    #     ocr = create_ocr()
+    #     ocr_result = ocr.predict(image_path)
+    #     angle = 0
+    #     if isinstance(ocr_result, dict):
+    #         angle = ocr_result.get("doc_preprocessor_res", {}).get("angle", 0)
+    #     elif isinstance(ocr_result, list) and ocr_result:
+    #         first = ocr_result[0]
+    #         if isinstance(first, dict):
+    #             angle = first.get("doc_preprocessor_res", {}).get("angle", 0)
+    #     return angle
     
     else:
         return 0
@@ -138,17 +138,17 @@ def get_img_text(image_path, method = "DEFAULT", vision_model = 0):
 
         return response_vision.strip()
        
-    elif method == "OCR":
-        ocr = create_ocr()
-        ocr_result = ocr.predict(image_path)
-        texts = []
-        if isinstance(ocr_result, dict):
-            texts = ocr_result.get("rec_texts", []) or []
-        elif isinstance(ocr_result, list) and ocr_result:
-            first = ocr_result[0]
-            if isinstance(first, dict):
-                texts = first.get("rec_texts", []) or []
-        return "".join(texts)
+    # elif method == "OCR":
+    #     ocr = create_ocr()
+    #     ocr_result = ocr.predict(image_path)
+    #     texts = []
+    #     if isinstance(ocr_result, dict):
+    #         texts = ocr_result.get("rec_texts", []) or []
+    #     elif isinstance(ocr_result, list) and ocr_result:
+    #         first = ocr_result[0]
+    #         if isinstance(first, dict):
+    #             texts = first.get("rec_texts", []) or []
+    #     return "".join(texts)
     
     else:
         return ""
@@ -247,16 +247,16 @@ def get_basic_info_independent(task_record_path, ocr_result_path, is_idp_rotate,
 
         print(f"类别名映射为数字的paths_all_info_list:{paths_all_info_list}\n")
 
-        if is_idp_rotate or is_idp_ocr:
-            if method_rotate == "OCR" or method_text == "OCR":
-                # 初始化 OCR（只做一次）
-                try:
-                    ocr = create_ocr()
-                except Exception as e:
-                    print(f"[ERROR] OCR 初始化失败: {e}")
-                    import traceback
-                    traceback.print_exc()
-                    return [None, [], (None, None, None), 2, 0, [], 0, 0, 0, 0, 0, [], [], [], []]
+        # if is_idp_rotate or is_idp_ocr:
+        #     if method_rotate == "OCR" or method_text == "OCR":
+        #         # 初始化 OCR（只做一次）
+        #         try:
+        #             ocr = create_ocr()
+        #         except Exception as e:
+        #             print(f"[ERROR] OCR 初始化失败: {e}")
+        #             import traceback
+        #             traceback.print_exc()
+        #             return [None, [], (None, None, None), 2, 0, [], 0, 0, 0, 0, 0, [], [], [], []]
 
         # 逐图：角度检测 -> 回正 -> 回正后 OCR
         all_ocr_text_results = []

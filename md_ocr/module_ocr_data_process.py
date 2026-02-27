@@ -474,6 +474,90 @@ def find_best_match_key(
 
     return None, None
 
+def find_all_match_key_alias(
+    alias_list,
+    candidate_keys,
+    report_type,
+    idx_num,
+    template_id,
+    case_insensitive=True
+):
+    """
+    Return all matches in alias_list order as a list of (matched_key, matched_alias).
+    - matched_key: key in candidate_keys that exists in extracted JSON dict
+    - matched_alias: the alias hit (for logging)
+    De-duplicates matched_key while keeping order.
+    """
+    if not alias_list or not candidate_keys:
+        return []
+
+    config = KEY_NORMALIZE_CONFIG
+    remove_chars = config.get("remove_chars", [])
+
+    def normalize(s: str) -> str:
+        s = str(s)
+
+        for remove_char in remove_chars:
+            s = s.replace(remove_char, "")
+
+        if case_insensitive:
+            s = s.lower()
+
+        # Hooks for report_type / idx_num / template_id if you later add custom rules
+        if report_type == 0:
+            pass
+        if idx_num == 0:
+            pass
+        if template_id == 1:
+            pass
+
+        return s
+
+    # normalized_key -> original_key (first one wins to stay consistent with find_best_match_key)
+    normalized_key_map = {}
+    for key in candidate_keys:
+        nk = normalize(key)
+        if nk and nk not in normalized_key_map:
+            normalized_key_map[nk] = key
+
+    hits = []
+    for alias in alias_list:
+        na = normalize(alias)
+        if na in normalized_key_map:
+            hits.append((normalized_key_map[na], alias))
+
+    # De-dup matched_key keep order
+    seen = set()
+    out = []
+    for k, a in hits:
+        if k not in seen:
+            out.append((k, a))
+            seen.add(k)
+    return out
+
+
+def pick_best_match_by_unit_symbols(extracted_data, candidates, unit_symbols):
+    """
+    Choose best candidate among [(key, alias), ...] by unit preference.
+    - If any candidate's unit contains any symbol in unit_symbols, pick the first such candidate.
+    - Otherwise, return the first candidate.
+    """
+    if not candidates:
+        return (None, None)
+
+    unit_symbols = unit_symbols or []
+    unit_symbols = [str(s) for s in unit_symbols if str(s)]
+
+    if unit_symbols:
+        for k, a in candidates:
+            unit = (extracted_data.get(k, {}) or {}).get("unit", "")
+            unit = (unit or "").strip()
+            if any(sym in unit for sym in unit_symbols):
+                return (k, a)
+
+    return candidates[0]
+
+
 def parse_llm_json(final_response):
     """
     从 LLM 输出文本中提取最后一个 JSON dict。
