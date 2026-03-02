@@ -691,8 +691,17 @@ def clean_indicator_value(raw_val, report_type, indicator_index):
         try:
             return float(s_norm), False
         except Exception:
+            # 2.5️⃣ 含单位/杂字符：提取第一个可解析数字（如 58.6um/L -> 58.6）
+            num_match = re.search(r'[-+]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?', s_norm)
+            if num_match:
+                try:
+                    return float(num_match.group(0)), False
+                except Exception:
+                    pass
+
             # 3️⃣ 文本值
             return s_norm, True
+
 
     # 非字符串：保持你原逻辑
     try:
