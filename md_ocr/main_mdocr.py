@@ -33,13 +33,16 @@ from keywords import FEMALE_ONLY_REPORT, MALE_ONLY_REPORT
 from keywords import UNABLE_TO_PROCESS_REPORT_LIST
 from keywords import TEMPLATE_KEYWORD_MAP 
 from keywords import MULTI_MATCH_UNIT_PREFERENCE
+from keywords import LLM_REEXTRACT_CONFIG
 from patch import check_template_type 
 
 from report_structure import REPORT_REGISTRY
 
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'llm_polish')))
+from llm_api import ali_api_vision
 from llm_keywords import ali_api_text_key_001, ali_api_vision_key_001
+from llm_prompt import DEFAULT_EXTRATCT_SYSTEM_PROMPT
 
 
 def parse_args():
@@ -144,7 +147,7 @@ def process_and_save_train_samples(final_report_info_map, save_path):
         
 
 # --- 修改：单图单报告组装逻辑 (不再依赖全局 Pool 和 模板) ---
-def assemble_report_for_image(report_type, extracted_data, finder, image_user_info, global_context, template_id=0):
+def assemble_report_for_image(report_type, extracted_data, finder, image_user_info, global_context, image_path, template_id=0):
     """
     针对单张图片、单个报告类型进行组装
     """
@@ -288,8 +291,51 @@ def assemble_report_for_image(report_type, extracted_data, finder, image_user_in
     idx_count = len(merged_data[8])
     print(f"报告类型：{report_name}")
     print(f"指标名称列表：{target_name_list}")
+
+    #1.LLM 重提取
+    if report_type in LLM_REEXTRACT_CONFIG:
+
+        print("触发 LLM 二次提取规则")
+
+        for idx, cfg in LLM_REEXTRACT_CONFIG[report_type].items():
+
+            prompt = cfg.get("prompt")
+
+            if not prompt:
+                continue
+
+            print(f"重新提取指标 index={idx}")
+
+            try:
+
+                response = ali_api_vision(
+                    DEFAULT_EXTRATCT_SYSTEM_PROMPT,
+                    prompt,
+                    image_path,
+                    0,
+                    ali_api_vision_key_001,
+                    temperature=0.0
+                )
+
+                parsed = parse_llm_json(response)
+
+                if parsed:
+
+                    val = parsed.get("val", -1)
+                    unit = parsed.get("unit", "")
+
+                    merged_data[8][idx] = val
+                    merged_data[9][idx] = unit
+
+                    print(
+                        f"LLM重新提取成功 idx={idx} -> {val} {unit}"
+                    )
+
+            except Exception as e:
+
+                print(f"LLM二次提取失败 idx={idx} : {e}")
     
-    #1.第一次值清洗
+    #2.第一次值清洗
     for i in range(idx_count):
         # 值清洗
         if isinstance(merged_data[8][i], str):
@@ -302,7 +348,7 @@ def assemble_report_for_image(report_type, extracted_data, finder, image_user_in
     temp_val = merged_data[8]
     temp_unit =merged_data[9]
 
-    #2.智能二次提取 值/单位
+    #3.智能二次提取 值/单位
     merged_data[8], merged_data[9] = finder.smart_secondary_extraction(
         report_type, 
         target_name_list, 
@@ -314,7 +360,7 @@ def assemble_report_for_image(report_type, extracted_data, finder, image_user_in
     temp_val = merged_data[8]
     temp_unit =merged_data[9]
 
-    #3.第二次值清洗
+    #4.第二次值清洗
     for i in range(idx_count):
         # 再次值清洗
         if isinstance(merged_data[8][i], str):
@@ -327,27 +373,27 @@ def assemble_report_for_image(report_type, extracted_data, finder, image_user_in
     temp_val = merged_data[8]
     temp_unit =merged_data[9]
 
-    #4.单位换算
+    #5.单位换算
     for i in range(idx_count):
         merged_data[8][i], merged_data[9][i] = try_convert_unit( merged_data[8][i], merged_data[9][i], report_obj.unit_conversions[i])
     print(f"P4 单位换算：{temp_val}/{temp_unit}-->{merged_data[8]}/{merged_data[9]}")
     temp_val = merged_data[8]
     temp_unit =merged_data[9]
 
-    #5.转为决策树所需小数位
+    #6.转为决策树所需小数位
     for i in range(idx_count):
         merged_data[8][i] = format_d_tree(merged_data[8][i])
     print(f"P5 转为决策树所需小数位：{temp_val}/{temp_unit}-->{merged_data[8]}/{merged_data[9]}")
     temp_val = merged_data[8]
     temp_unit =merged_data[9]
 
-    #6.值保留，仅保留关键字段（“阴性 1.2”->“阴性”）
+    #7.值保留，仅保留关键字段（“阴性 1.2”->“阴性”）
     merged_data[8] = apply_report_value_keep_map(report_type, merged_data[8])  
     print(f"P6 值保留：{temp_val}/{temp_unit}-->{merged_data[8]}/{merged_data[9]}")
     temp_val = merged_data[8]
     temp_unit =merged_data[9]
     
-    #7.值映射("未检出"->"阴性")
+    #8.值映射("未检出"->"阴性")
     merged_data[8] = apply_report_value_map(report_type, merged_data[8])  
     print(f"P7 值映射：{temp_val}/{temp_unit}-->{merged_data[8]}/{merged_data[9]}")
     temp_val = merged_data[8]
@@ -488,7 +534,8 @@ def process_single_image_pipeline(item, ocr_text, global_context, is_collect_tra
                     finder,
                     image_user_info,
                     global_context,
-                    template_id=template_id
+                    path,   # 新增
+                    template_id
                 )
                 if report_res:
                     image_reports.append(report_res)
