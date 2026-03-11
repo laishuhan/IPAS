@@ -1044,3 +1044,17 @@ def get_img_meta(path):
 
     return img_size_str, img_w_h
 
+def convert_numbers_to_str(lst):
+    result = []
+    for item in lst:
+        if isinstance(item, list):
+            # 如果是子列表，递归处理
+            result.append(convert_numbers_to_str(item))
+        elif isinstance(item, (int, float)):
+            # 如果是数字，转为字符串
+            result.append(str(item))
+        else:
+            # 其他类型保持不变
+            result.append(item)
+    return result
+

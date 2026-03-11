@@ -20,6 +20,7 @@ from module_ocr_data_process import get_uncertainty
 from module_ocr_data_process import get_diagnosis_text_out
 from module_ocr_data_process import get_img_meta
 from module_ocr_data_process import find_all_match_key_alias, pick_best_match_by_unit_symbols
+from module_ocr_data_process import convert_numbers_to_str
 
 from module_ocr_data_find import FindMethod
 
@@ -283,10 +284,6 @@ def assemble_report_for_image(report_type, extracted_data, finder, image_user_in
             merged_data[10] = copy.deepcopy(special_result)
             print(f"  - 特殊报告数据: {merged_data[8]}")
 
-    # 备份原始数据
-    merged_data[10] = copy.deepcopy(merged_data[8])
-    merged_data[11] = copy.deepcopy(merged_data[9])
-
     #此类别总指标个数
     idx_count = len(merged_data[8])
     print(f"报告类型：{report_name}")
@@ -295,7 +292,7 @@ def assemble_report_for_image(report_type, extracted_data, finder, image_user_in
     #1.LLM 重提取
     if report_type in LLM_REEXTRACT_CONFIG:
 
-        print("触发 LLM 二次提取规则")
+        print("P1. 触发 LLM 二次提取规则")
 
         for idx, cfg in LLM_REEXTRACT_CONFIG[report_type].items():
 
@@ -344,7 +341,7 @@ def assemble_report_for_image(report_type, extracted_data, finder, image_user_in
                 report_type=report_type,
                 indicator_index=i
             )    
-    print(f"P1 第一次值清洗：{merged_data[10]}/{merged_data[11]}-->{merged_data[8]}/{merged_data[9]}")
+    print(f"P2. 第一次值清洗：{merged_data[10]}/{merged_data[11]}-->{merged_data[8]}/{merged_data[9]}")
     temp_val = merged_data[8]
     temp_unit =merged_data[9]
 
@@ -356,7 +353,7 @@ def assemble_report_for_image(report_type, extracted_data, finder, image_user_in
         merged_data[9], 
         ali_api_text_key_001
     )
-    print(f"P2 智能二次提取：{temp_val}/{temp_unit}-->{merged_data[8]}/{merged_data[9]}")
+    print(f"P3. 智能二次提取：{temp_val}/{temp_unit}-->{merged_data[8]}/{merged_data[9]}")
     temp_val = merged_data[8]
     temp_unit =merged_data[9]
 
@@ -369,35 +366,39 @@ def assemble_report_for_image(report_type, extracted_data, finder, image_user_in
                 report_type=report_type,
                 indicator_index=i
             )
-    print(f"P3 第二次值清洗：{temp_val}/{temp_unit}-->{merged_data[8]}/{merged_data[9]}")
+    print(f"P4. 第二次值清洗：{temp_val}/{temp_unit}-->{merged_data[8]}/{merged_data[9]}")
     temp_val = merged_data[8]
     temp_unit =merged_data[9]
 
     #5.单位换算
     for i in range(idx_count):
         merged_data[8][i], merged_data[9][i] = try_convert_unit( merged_data[8][i], merged_data[9][i], report_obj.unit_conversions[i])
-    print(f"P4 单位换算：{temp_val}/{temp_unit}-->{merged_data[8]}/{merged_data[9]}")
+    print(f"P5. 单位换算：{temp_val}/{temp_unit}-->{merged_data[8]}/{merged_data[9]}")
     temp_val = merged_data[8]
     temp_unit =merged_data[9]
 
     #6.转为决策树所需小数位
     for i in range(idx_count):
         merged_data[8][i] = format_d_tree(merged_data[8][i])
-    print(f"P5 转为决策树所需小数位：{temp_val}/{temp_unit}-->{merged_data[8]}/{merged_data[9]}")
+    print(f"P6. 转为决策树所需小数位：{temp_val}/{temp_unit}-->{merged_data[8]}/{merged_data[9]}")
     temp_val = merged_data[8]
     temp_unit =merged_data[9]
 
     #7.值保留，仅保留关键字段（“阴性 1.2”->“阴性”）
     merged_data[8] = apply_report_value_keep_map(report_type, merged_data[8])  
-    print(f"P6 值保留：{temp_val}/{temp_unit}-->{merged_data[8]}/{merged_data[9]}")
+    print(f"P7. 值保留：{temp_val}/{temp_unit}-->{merged_data[8]}/{merged_data[9]}")
     temp_val = merged_data[8]
     temp_unit =merged_data[9]
     
     #8.值映射("未检出"->"阴性")
     merged_data[8] = apply_report_value_map(report_type, merged_data[8])  
-    print(f"P7 值映射：{temp_val}/{temp_unit}-->{merged_data[8]}/{merged_data[9]}")
+    print(f"P8. 值映射：{temp_val}/{temp_unit}-->{merged_data[8]}/{merged_data[9]}")
     temp_val = merged_data[8]
-    temp_unit =merged_data[9]
+    temp_unit = merged_data[9]
+
+    # 复制数据,全部转为字符串形式
+    merged_data[10] = convert_numbers_to_str(merged_data[8])
+    merged_data[11] = convert_numbers_to_str(merged_data[9])
 
     return {
         "task_id": task_id,
@@ -678,13 +679,9 @@ def main(args):
     # 直接使用内存中的 original_data_structure，无需再次读取文件
     required_data_structure = convert_and_save_target_format(original_data=original_data_structure)
 
-    # 6. 转换图片-文件格式
-    #required_data_structure_with_img_file = add_img_file_relation(required_data_structure)
-    required_data_structure_with_img_file = required_data_structure
-    
     try:
         with open(REPORT_INFO_PATH, 'w', encoding='utf-8') as f:
-            json.dump(required_data_structure_with_img_file, f, ensure_ascii=False, indent=4)
+            json.dump(required_data_structure, f, ensure_ascii=False, indent=4)
         print(f"目标格式结果已保存至: {REPORT_INFO_PATH}")
     except Exception as e:
         print(f"[Error] 保存目标格式失败: {e}")
