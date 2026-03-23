@@ -656,13 +656,12 @@ def clean_indicator_value(raw_val, report_type, indicator_index):
         if not s:
             return -1, False
 
-
         rule = (REPORT_VALUE_FILTER_MAP.get(report_type, {}) or {}).get(indicator_index)
         if rule:
             before = s
             removed_chars = rule.get("remove_chars", []) or []
             removed_regex = rule.get("removed_regex", []) or []
-            
+
             for ch in removed_chars:
                 s = s.replace(ch, "")
             for pattern in removed_regex:
@@ -674,9 +673,16 @@ def clean_indicator_value(raw_val, report_type, indicator_index):
                     f"筛除前='{before}' 筛除后='{s}' "
                 )
 
-
         # 归一化科学计数法（×10⁶ -> x10^6）
         s_norm = normalize_scientific_text(s)
+
+        # 0️⃣ 列表样式字符串：保持字符串返回
+        try:
+            parsed = ast.literal_eval(s_norm)
+            if isinstance(parsed, (list, tuple)):
+                return s_norm, True
+        except Exception:
+            pass
 
         # 1️⃣ 标准科学计数法（支持 x10^6）
         sci_match = re.search(
@@ -706,12 +712,12 @@ def clean_indicator_value(raw_val, report_type, indicator_index):
             # 3️⃣ 文本值
             return s_norm, True
 
-
-    # 非字符串：保持你原逻辑
+    # 非字符串：保持原逻辑
     try:
         return float(raw_val), False
     except Exception:
         return -1, False
+
 
 def build_data_map_for_assemble(normalized_json):
     """

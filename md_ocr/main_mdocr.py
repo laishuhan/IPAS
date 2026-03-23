@@ -289,50 +289,6 @@ def assemble_report_for_image(report_type, extracted_data, finder, image_user_in
     print(f"报告类型：{report_name}")
     print(f"指标名称列表：{target_name_list}")
 
-
-                
-    temp_val = merged_data[8]
-    temp_unit =merged_data[9]
-
-    #第一次值清洗
-    for i in range(idx_count):
-        # 值清洗
-        if isinstance(merged_data[8][i], str):
-            merged_data[8][i], is_text = clean_indicator_value(
-                merged_data[8][i],
-                report_type=report_type,
-                indicator_index=i
-            )    
-
-    print(f"第一次值清洗：{temp_val}/{temp_unit}-->{merged_data[8]}/{merged_data[9]}")
-    temp_val = merged_data[8]
-    temp_unit =merged_data[9]
-
-    #智能二次提取 值/单位
-    merged_data[8], merged_data[9] = finder.smart_secondary_extraction(
-        report_type, 
-        target_name_list, 
-        merged_data[8], 
-        merged_data[9], 
-        ali_api_text_key_001
-    )
-    print(f"智能二次提取：{temp_val}/{temp_unit}-->{merged_data[8]}/{merged_data[9]}")
-    temp_val = merged_data[8]
-    temp_unit =merged_data[9]
-
-    #第二次值清洗
-    for i in range(idx_count):
-        # 再次值清洗
-        if isinstance(merged_data[8][i], str):
-            merged_data[8][i], is_text = clean_indicator_value(
-                merged_data[8][i],
-                report_type=report_type,
-                indicator_index=i
-            )
-    print(f"第二次值清洗：{temp_val}/{temp_unit}-->{merged_data[8]}/{merged_data[9]}")
-    temp_val = merged_data[8]
-    temp_unit =merged_data[9]
-
     #LLM 重提取
     if report_type in LLM_REEXTRACT_CONFIG:
 
@@ -380,6 +336,48 @@ def assemble_report_for_image(report_type, extracted_data, finder, image_user_in
             except Exception as e:
 
                 print(f"LLM二次提取失败 idx={idx} : {e}")
+                
+    temp_val = merged_data[8]
+    temp_unit =merged_data[9]
+
+    #第一次值清洗
+    for i in range(idx_count):
+        # 值清洗
+        if isinstance(merged_data[8][i], str):
+            merged_data[8][i], is_text = clean_indicator_value(
+                merged_data[8][i],
+                report_type=report_type,
+                indicator_index=i
+            )    
+
+    print(f"第一次值清洗：{temp_val}/{temp_unit}-->{merged_data[8]}/{merged_data[9]}")
+    temp_val = merged_data[8]
+    temp_unit =merged_data[9]
+
+    #智能二次提取 值/单位
+    merged_data[8], merged_data[9] = finder.smart_secondary_extraction(
+        report_type, 
+        target_name_list, 
+        merged_data[8], 
+        merged_data[9], 
+        ali_api_text_key_001
+    )
+    print(f"智能二次提取：{temp_val}/{temp_unit}-->{merged_data[8]}/{merged_data[9]}")
+    temp_val = merged_data[8]
+    temp_unit =merged_data[9]
+
+    #第二次值清洗
+    for i in range(idx_count):
+        # 再次值清洗
+        if isinstance(merged_data[8][i], str):
+            merged_data[8][i], is_text = clean_indicator_value(
+                merged_data[8][i],
+                report_type=report_type,
+                indicator_index=i
+            )
+    print(f"第二次值清洗：{temp_val}/{temp_unit}-->{merged_data[8]}/{merged_data[9]}")
+    temp_val = merged_data[8]
+    temp_unit =merged_data[9]
 
     #单位换算
     for i in range(idx_count):
