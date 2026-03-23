@@ -289,10 +289,129 @@ def assemble_report_for_image(report_type, extracted_data, finder, image_user_in
     print(f"报告类型：{report_name}")
     print(f"指标名称列表：{target_name_list}")
 
-    #1.LLM 重提取
+
+                
+    temp_val = merged_data[8]
+    temp_unit =merged_data[9]
+
+    #第一次值清洗
+    for i in range(idx_count):
+        # 值清洗
+        if isinstance(merged_data[8][i], str):
+            merged_data[8][i], is_text = clean_indicator_value(
+                merged_data[8][i],
+                report_type=report_type,
+                indicator_index=i
+            )    
+
+    print(f"第一次值清洗：{temp_val}/{temp_unit}-->{merged_data[8]}/{merged_data[9]}")
+    temp_val = merged_data[8]
+    temp_unit =merged_data[9]
+
+    #智能二次提取 值/单位
+    merged_data[8], merged_data[9] = finder.smart_secondary_extraction(
+        report_type, 
+        target_name_list, 
+        merged_data[8], 
+        merged_data[9], 
+        ali_api_text_key_001
+    )
+    print(f"智能二次提取：{temp_val}/{temp_unit}-->{merged_data[8]}/{merged_data[9]}")
+    temp_val = merged_data[8]
+    temp_unit =merged_data[9]
+
+    #第二次值清洗
+    for i in range(idx_count):
+        # 再次值清洗
+        if isinstance(merged_data[8][i], str):
+            merged_data[8][i], is_text = clean_indicator_value(
+                merged_data[8][i],
+                report_type=report_type,
+                indicator_index=i
+            )
+    print(f"第二次值清洗：{temp_val}/{temp_unit}-->{merged_data[8]}/{merged_data[9]}")
+    temp_val = merged_data[8]
+    temp_unit =merged_data[9]
+
+    #LLM 重提取
     if report_type in LLM_REEXTRACT_CONFIG:
 
-        print("P1. 触发 LLM 二次提取规则")
+        print("触发 LLM 二次提取规则")
+
+        for idx, cfg in LLM_REEXTRACT_CONFIG[report_type].items():
+
+            prompt_val = cfg.get("prompt_val")
+            prompt_uni = cfg.get("prompt_uni")
+            prompt = cfg.get("prompt")
+
+            if not prompt_val and not prompt_uni and not prompt:
+                continue
+
+            print(f"重新提取指标 index={idx}")
+
+            try:
+                val = merged_data[8][idx]
+                unit = merged_data[9][idx]
+
+                val = ali_api_vision(
+                    DEFAULT_EXTRATCT_SYSTEM_PROMPT,
+                    prompt_val,
+                    image_path,
+                    0,
+                    ali_api_vision_key_001,
+                    temperature=0.0
+                )
+  
+                unit = ali_api_vision(
+                    DEFAULT_EXTRATCT_SYSTEM_PROMPT,
+                    prompt_uni,
+                    image_path,
+                    0,
+                    ali_api_vision_key_001,
+                    temperature=0.0
+                )
+
+                merged_data[8][idx] = val
+                merged_data[9][idx] = unit
+
+                print(
+                    f"LLM重新提取成功 idx={idx} -> {val} {unit}"
+                )
+            except Exception as e:
+
+                print(f"LLM二次提取失败 idx={idx} : {e}")
+
+    #单位换算
+    for i in range(idx_count):
+        merged_data[8][i], merged_data[9][i] = try_convert_unit( merged_data[8][i], merged_data[9][i], report_obj.unit_conversions[i])
+    print(f"单位换算：{temp_val}/{temp_unit}-->{merged_data[8]}/{merged_data[9]}")
+    temp_val = merged_data[8]
+    temp_unit =merged_data[9]
+
+    #转为决策树所需小数位
+    for i in range(idx_count):
+        merged_data[8][i] = format_d_tree(merged_data[8][i])
+    print(f"转为决策树所需小数位：{temp_val}/{temp_unit}-->{merged_data[8]}/{merged_data[9]}")
+    temp_val = merged_data[8]
+    temp_unit =merged_data[9]
+
+    #值保留，仅保留关键字段（“阴性 1.2”->“阴性”）
+    merged_data[8] = apply_report_value_keep_map(report_type, merged_data[8])  
+    print(f"值保留：{temp_val}/{temp_unit}-->{merged_data[8]}/{merged_data[9]}")
+    temp_val = merged_data[8]
+    temp_unit =merged_data[9]
+    
+    #值映射("未检出"->"阴性")
+    merged_data[8] = apply_report_value_map(report_type, merged_data[8])  
+    print(f"值映射：{temp_val}/{temp_unit}-->{merged_data[8]}/{merged_data[9]}")
+    temp_val = merged_data[8]
+    temp_unit = merged_data[9]
+
+
+    #LLM 重提取
+    if report_type in LLM_REEXTRACT_CONFIG:
+
+        print("触发 LLM 二次提取规则")
 
         for idx, cfg in LLM_REEXTRACT_CONFIG[report_type].items():
 
@@ -306,14 +425,13 @@ def assemble_report_for_image(report_type, extracted_data, finder, image_user_in
             try:
 
                 response = ali_api_vision(
-                    DEFAULT_EXTRATCT_SYSTEM_PROMPT,
+                    DEFAULT_VISION_EXTRATCT_SYSTEM_PROMPT,
                     prompt,
                     image_path,
                     0,
                     ali_api_vision_key_001,
                     temperature=0.0
                 )
-
                 parsed = parse_llm_json(response)
 
                 if parsed:
@@ -328,73 +446,10 @@ def assemble_report_for_image(report_type, extracted_data, finder, image_user_in
                         f"LLM重新提取成功 idx={idx} -> {val} {unit}"
                     )
 
+                    
+
             except Exception as e:
-
                 print(f"LLM二次提取失败 idx={idx} : {e}")
-    
-    #2.第一次值清洗
-    for i in range(idx_count):
-        # 值清洗
-        if isinstance(merged_data[8][i], str):
-            merged_data[8][i], is_text = clean_indicator_value(
-                merged_data[8][i],
-                report_type=report_type,
-                indicator_index=i
-            )    
-    print(f"P2. 第一次值清洗：{merged_data[10]}/{merged_data[11]}-->{merged_data[8]}/{merged_data[9]}")
-    temp_val = merged_data[8]
-    temp_unit =merged_data[9]
-
-    #3.智能二次提取 值/单位
-    merged_data[8], merged_data[9] = finder.smart_secondary_extraction(
-        report_type, 
-        target_name_list, 
-        merged_data[8], 
-        merged_data[9], 
-        ali_api_text_key_001
-    )
-    print(f"P3. 智能二次提取：{temp_val}/{temp_unit}-->{merged_data[8]}/{merged_data[9]}")
-    temp_val = merged_data[8]
-    temp_unit =merged_data[9]
-
-    #4.第二次值清洗
-    for i in range(idx_count):
-        # 再次值清洗
-        if isinstance(merged_data[8][i], str):
-            merged_data[8][i], is_text = clean_indicator_value(
-                merged_data[8][i],
-                report_type=report_type,
-                indicator_index=i
-            )
-    print(f"P4. 第二次值清洗：{temp_val}/{temp_unit}-->{merged_data[8]}/{merged_data[9]}")
-    temp_val = merged_data[8]
-    temp_unit =merged_data[9]
-
-    #5.单位换算
-    for i in range(idx_count):
-        merged_data[8][i], merged_data[9][i] = try_convert_unit( merged_data[8][i], merged_data[9][i], report_obj.unit_conversions[i])
-    print(f"P5. 单位换算：{temp_val}/{temp_unit}-->{merged_data[8]}/{merged_data[9]}")
-    temp_val = merged_data[8]
-    temp_unit =merged_data[9]
-
-    #6.转为决策树所需小数位
-    for i in range(idx_count):
-        merged_data[8][i] = format_d_tree(merged_data[8][i])
-    print(f"P6. 转为决策树所需小数位：{temp_val}/{temp_unit}-->{merged_data[8]}/{merged_data[9]}")
-    temp_val = merged_data[8]
-    temp_unit =merged_data[9]
-
-    #7.值保留，仅保留关键字段（“阴性 1.2”->“阴性”）
-    merged_data[8] = apply_report_value_keep_map(report_type, merged_data[8])  
-    print(f"P7. 值保留：{temp_val}/{temp_unit}-->{merged_data[8]}/{merged_data[9]}")
-    temp_val = merged_data[8]
-    temp_unit =merged_data[9]
-    
-    #8.值映射("未检出"->"阴性")
-    merged_data[8] = apply_report_value_map(report_type, merged_data[8])  
-    print(f"P8. 值映射：{temp_val}/{temp_unit}-->{merged_data[8]}/{merged_data[9]}")
-    temp_val = merged_data[8]
-    temp_unit = merged_data[9]
 
     # 复制数据,全部转为字符串形式
     merged_data[10] = convert_numbers_to_str(merged_data[8])
@@ -565,8 +620,8 @@ def main(args):
     REPORT_INFO_PATH = args.output_report_info_path
 
 
-    IS_INDEPENDENT_ROTATE = True #是否独立旋转
-    IS_INDEPENDENT_OCR = True #是否独立OCR
+    IS_INDEPENDENT_ROTATE = False #是否独立旋转
+    IS_INDEPENDENT_OCR = False #是否独立OCR
 
 
     # IS_INDEPENDENT_ROTATE = False #是否独立旋转

@@ -175,9 +175,13 @@ def get_paths_all_info(pages):
 
     for page in pages:
         image_path = page.get("imagePath")
-        categories = page.get("matchedCategories", [])
-        country = page.get("country", "")
-        vig = page.get("vig", 0)
+        # categories = page.get("matchedCategories", [])
+        # country = page.get("country", "")
+        # vig = page.get("vig", 0)
+
+        categories = ["leukorrhea_routine_report"]
+        country = "china"
+        vig = 0
 
         # 只在 image_path 存在时加入
         if image_path:
