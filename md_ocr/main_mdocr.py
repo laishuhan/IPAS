@@ -619,7 +619,7 @@ def main(args):
 
 
     IS_INDEPENDENT_ROTATE = False #是否独立旋转
-    IS_INDEPENDENT_OCR = True #是否独立OCR
+    IS_INDEPENDENT_OCR = False #是否独立OCR
 
 
     # IS_INDEPENDENT_ROTATE = True #是否独立旋转
