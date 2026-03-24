@@ -247,41 +247,76 @@ def get_basic_info_independent(task_record_path, ocr_result_path, is_idp_rotate,
 
         print(f"类别名映射为数字的paths_all_info_list:{paths_all_info_list}\n")
 
-        # if is_idp_rotate or is_idp_ocr:
-        #     if method_rotate == "OCR" or method_text == "OCR":
-        #         # 初始化 OCR（只做一次）
-        #         try:
-        #             ocr = create_ocr()
-        #         except Exception as e:
-        #             print(f"[ERROR] OCR 初始化失败: {e}")
-        #             import traceback
-        #             traceback.print_exc()
-        #             return [None, [], (None, None, None), 2, 0, [], 0, 0, 0, 0, 0, [], [], [], []]
-
-        # 逐图：角度检测 -> 回正 -> 回正后 OCR
         all_ocr_text_results = []
-        for item in paths_all_info_list:
-            path = item[0]
-            
-            if is_idp_rotate:
-                angle = get_img_angle(path, method_rotate, vision_model_rotate)
-                print(f"通过方法{method_rotate}检测到图片{path}相比于原始状态被顺时针旋转角度{angle}度")
-                new_image_path = reversed_rotate_image(angle, path, "_rotate_BY_mdocr")
-                print(f"已反向旋转{angle}度回正，新图片路径为{new_image_path}")
-                item[0] = new_image_path
 
+        for item in paths_all_info_list:
+            origin_path = item[0]
+
+            # ✅ 永远有值（核心修复）
+            new_image_path = origin_path
+
+            # -------------------------
+            # 1️⃣ 旋转（可选）
+            # -------------------------
+            if is_idp_rotate:
+                try:
+                    angle = get_img_angle(origin_path, method_rotate, vision_model_rotate)
+                    print(f"通过方法{method_rotate}检测到图片{origin_path}旋转角度: {angle}")
+
+                    new_image_path = reversed_rotate_image(
+                        angle,
+                        origin_path,
+                        "_rotate_BY_mdocr"
+                    )
+
+                    print(f"已回正，新路径: {new_image_path}")
+
+                except Exception as e:
+                    print(f"[WARN] 图片旋转失败，使用原图: {e}")
+                    new_image_path = origin_path
+
+            # 更新路径（后续统一用）
+            item[0] = new_image_path
+
+            # -------------------------
+            # 2️⃣ OCR（独立模式）
+            # -------------------------
             if is_idp_ocr:
-                ocr_text = get_img_text(path, method_text,vision_model_text)
-                print(f"图片{new_image_path} 通过方法{method_text}得到的OCR内容为:{ocr_text}")
-                all_ocr_text_results.append(ocr_text)
-        
+                try:
+                    ocr_text = get_img_text(
+                        new_image_path,   # ✅ 用新路径
+                        method_text,
+                        vision_model_text
+                    )
+
+                    print(f"OCR({method_text})[{new_image_path}]: {ocr_text[:100]}...")
+                    all_ocr_text_results.append(ocr_text)
+
+                except Exception as e:
+                    print(f"[ERROR] OCR失败: {e}")
+                    all_ocr_text_results.append("")
+
+        # -------------------------
+        # 3️⃣ 非独立OCR模式（读取文件）
+        # -------------------------
         if not is_idp_ocr:
-            with open(ocr_result_path, 'r', encoding='utf-8') as f:
-                ocr_result = json.load(f)
-            #提取文字内容部分
-            all_ocr_text_results = []
-            for ocr in ocr_result:
-                all_ocr_text_results.append(get_ocr_text_from_paddleocr3(ocr))
+
+            if not os.path.exists(ocr_result_path):
+                raise Exception(f"ocr_result.json 不存在: {ocr_result_path}")
+
+            try:
+                with open(ocr_result_path, 'r', encoding='utf-8') as f:
+                    ocr_result = json.load(f)
+
+                all_ocr_text_results = [
+                    get_ocr_text_from_paddleocr3(ocr)
+                    for ocr in ocr_result
+                ]
+
+            except Exception as e:
+                print(f"[ERROR] 读取OCR结果失败: {e}")
+                raise
+
 
         # 统计（注意：这里使用的路径已经是可能回正后的路径）
         total_img_list = [item[0] for item in paths_all_info_list]
