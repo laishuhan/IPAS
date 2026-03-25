@@ -281,7 +281,6 @@ def assemble_report_for_image(report_type, extracted_data, finder, image_user_in
         if special_result is not None:
             # 单图模式下，直接赋值，不进行多页列表嵌套
             merged_data[8] = copy.deepcopy(special_result)
-            merged_data[10] = copy.deepcopy(special_result)
             print(f"  - 特殊报告数据: {merged_data[8]}")
 
     #此类别总指标个数
@@ -622,8 +621,8 @@ def main(args):
     IS_INDEPENDENT_OCR = False #是否独立OCR
 
 
-    # IS_INDEPENDENT_ROTATE = True #是否独立旋转
-    # IS_INDEPENDENT_OCR = True #是否独立OCR
+    # IS_INDEPENDENT_ROTATE = False #是否独立旋转
+    # IS_INDEPENDENT_OCR = False #是否独立OCR
 
     if IS_INDEPENDENT_ROTATE == True or IS_INDEPENDENT_OCR == True:
         if IS_INDEPENDENT_ROTATE:

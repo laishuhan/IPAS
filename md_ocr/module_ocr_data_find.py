@@ -246,13 +246,13 @@ class FindMethod:
         prompt = (
             "这是一张支原体检查报告图片。\n"
             "请你根据报告中的表格、勾选项、结论区内容，判断是否存在以下结论，"
-            "并按顺序返回一个长度为6的Python列表：\n\n"
+            "并按顺序返回一个长度为2的Python列表：\n\n"
             "1. 解脲支原体\n"
             "2. 人型支原体\n"
             "规则：\n"
-            "- 如果明确出现且结论为存在，对应位置为 阳性\n"
-            "- 如果明确出现且结论为不存在，对应位置为 阴性\n"
-            "- 如果没有出现，对应位置为 不存在\n\n"
+            "- 如果指标名称明确出现且结论为存在，对应位置为 阳性\n"
+            "- 如果指标名称明确出现且结论为不存在，对应位置为 阴性\n"
+            "- 如果指标名称没有出现，对应位置为 不存在\n\n"
             "只返回 Python 列表，例如：[阳性, 阴性]\n"
             "注意！如果报告中结论提到了“未生长支原体”或类似字样，请直接返回列表[阴性, 阴性]，此规则优先级最高\n"
             "不要输出任何解释性文字。"
@@ -270,14 +270,46 @@ class FindMethod:
 
         print(f"支原体特殊提取模型原始输出:{response}\n")
 
-        try:
-            result = extract_str_list_from_text(response, 2)
-            if isinstance(result, list) and len(result) == 2:
-                return result
-        except Exception:
-            pass
+        
+        result = extract_str_list_from_text(response, 2)
+        
+        return result
 
-        return [-1] * 6
+
+    def find_thalassemia_info_in_vision(self, key):
+        model_number = 0  # 视觉模型
+
+        prompt = (
+            "这是一张地中海贫血检查报告图片。\n"
+            "请你根据报告中的表格、勾选项、结论区内容，判断是否存在以下结论，"
+            "并按顺序返回一个长度为3的Python列表：\n\n"
+            "1. a-地贫基因检测(3种缺失型)\n"
+            "2. a-地贫基因检测(3种非缺失型)\n"
+            "3. β-地贫基因检测(17种突变)\n"
+            "规则：\n"
+            "- 如果指标名称明确出现且结论为存在，对应位置为 阳性\n"
+            "- 如果指标名称明确出现且结论为不为存在，对应位置为 阴性\n"
+            "- 如果指标名称没有出现，对应位置为 不存在\n\n"
+            "只返回 Python 列表，例如：[阳性, 阴性，不存在]\n"
+            "不要输出任何解释性文字。"
+        )
+
+        response = ali_api_vision(
+            DEFAULT_VISION_EXTRATCT_SYSTEM_PROMPT,
+            prompt,
+            self.img_path,
+            model_number,
+            key,
+            prompt_enhancer=DEFAULT_VISION_EXTRATCT_ENHANCER,
+            temperature=0.0,
+        )
+
+        print(f"支原体特殊提取模型原始输出:{response}\n")
+
+        result = extract_str_list_from_text(response, 3)
+        
+        return result
+ 
 
         
     def find_neisseria_gonorrhoeae_culture_info_in_vision(self, key):

@@ -81,6 +81,7 @@ UNABLE_TO_PROCESS_REPORT_LIST = [
 SPECIAL_EXTRACTOR_LIST = [
     4,   # 中文 B 超
     14,  # 支原体
+    16,  # 地中海贫血 
     28,  # TCT（新增）
     33,  # 淋球菌
 ]
@@ -88,6 +89,7 @@ SPECIAL_EXTRACTOR_LIST = [
 SPECIAL_EXTRACTOR_MAP = {
     4: "find_b_info_in_text",
     14: "find_mycoplasma_info_in_vision",
+    16: "find_thalassemia_info_in_vision",
     28: "find_tct_info_in_vision",
     33: "find_neisseria_gonorrhoeae_culture_info_in_vision",
 }
