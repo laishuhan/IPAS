@@ -16,6 +16,13 @@
 #0214-14:16 jww add"25-OH维生素D"(type 20)
 #0227-10:19 jww add "前向运动精子(PR,%)","总活力(PR+NP,%)"(type 3)
 #0227-10:41 jww add "PR+NP百分率","前向运动精子(PR)百分率"(type 3)
+#0228-11:25 jww add "糖化血红蛋白A1c"(type 26)
+#0228-14:52 jww add "标准化比值(比值)(dRVVT法)","狼疮筛查时间(dRVVT法)","狼疮确认时间比值(dRVVT法)" (type 30)
+#0302-10:51 jww add "精子总活力(PR+NP)","前向运动力(PR)" (type 3)
+#0303-13:33 jww add "滴虫镜检","真菌镜检","白带清洁度"(type 31)
+#0303-13:42 jww add "前向运动精子活动率"(type 3)
+#0309-10:05 jww add "孕酮P"(type 1)
+#0316-10:20 jww add "γ-糖链抗原125(CA125)"(type 32)
 class General_Report: 
     def __init__(self, report_name, index, unit_conversions, keywords=None):
         self.report_name = report_name
@@ -42,7 +49,7 @@ six_sex_hormone_report = General_Report(
     keywords = [
         ["黄体生成素(LH)", "黄体生成素", "LH", "促黄体生成素", "血清促黄体生成素测定(LH)", "促黄体生成素(LH)测定", "促黄体生成素(LH)", "促黄体生成素(LH)","LH(LuteinizingHormone)","促黄体生成激素"],
         ["卵泡刺激素(FSH)", "卵泡刺激素", "FSH", "促卵泡生成素", "血清促卵泡刺激素测定(FSH)", "卵泡刺激素(FSH)测定","促卵泡生成素(FSH)","FSH(Follicle-StimulatingHormone)","血清促卵泡刺激素","卵泡生成素"],
-        ["孕酮(P4)", "孕酮", "P4", "Prog", "孕酮测定", "血清孕酮(PROG)测定", "血清孕酮(PROG)", "PRGE", "孕酮(P)","Progesterone","Progesterone(P4)"],
+        ["孕酮(P4)", "孕酮", "P4", "Prog", "孕酮测定", "血清孕酮(PROG)测定", "血清孕酮(PROG)", "PRGE", "孕酮(P)","Progesterone","Progesterone(P4)","孕酮P"],
         ["睾酮(T)", "睾酮", "Testo", "总睾酮","睾酮测定(TEST)", "血清睾酮(TESTO)测定", "血清睾酮(TESTO)", "TSTO", "TEST"],
         ["雌二醇(E2)", "雌二醇", "E2", "二羟基雌特酮", "雌二醇(E2)测定", "eE2", "雌二醇(E2)","Estradiol","Estradiol(E2)"],
         ["催乳素(PRL)", "催乳素", "PRL", "泌乳素", "垂体泌乳素", "垂体泌乳素(PRL)", "催乳素(PRL)","Prolactin","血清垂体泌乳素","泌乳素测定"]
@@ -96,8 +103,8 @@ sperm_report = General_Report(
         ["白细胞浓度(WBC)", "白细胞浓度", "WBC", "圆细胞", "白细胞"],
         ["精子浓度(Concentration)", "精子浓度", "Concentration", "密度","精子浓度", ],
         ["总精子数(Total Concentration)", "总精子数", "Total Concentration", "精子总数", "精子总数"],
-        ["精子总活力(Motility)", "精子总活力", "Motility", "PR+NP", "总活力(PR+NP)","总精子活动率","精子总活动率","总活力(PR+NP,%)","PR+NP百分率"],
-        ["前向精子百分率(Progressive motile)", "前向精子百分率", "Progressive motile", "a+b", "前向运动", "前向运动精子百分率(PR)","前向运动率","前向运动精子(PR)","前向运动精子(PR,%)","前向运动精子(PR)百分率"],
+        ["精子总活力(Motility)", "精子总活力", "Motility", "PR+NP", "总活力(PR+NP)","总精子活动率","精子总活动率","总活力(PR+NP,%)","PR+NP百分率","精子总活力(PR+NP)"],
+        ["前向精子百分率(Progressive motile)", "前向精子百分率", "Progressive motile", "a+b", "前向运动", "前向运动精子百分率(PR)","前向运动率","前向运动精子(PR)","前向运动精子(PR,%)","前向运动精子(PR)百分率","前向运动力(PR)","前向运动精子活动率"],
         ["精子正常形态率(Morphology)", "精子正常形态率", "Morphology", "正常形态率", "正常形态精子"],
         ["血红蛋白A(HBA)", "血红蛋白A", "HBA", "精子头部结合水解酶"],
         ["快速前向运动精子(A)"],
@@ -118,8 +125,31 @@ sperm_report = General_Report(
         []  # 快速前向运动精子(B)
     ]
 )
-# 4. B超（妇科）
+# 4. 国内B超
 b_ultrasound_report = General_Report(
+    report_name="中文B超",
+    index=[
+        "子宫内膜厚度",        # [左, 右]
+        "卵泡总数",            # int
+        "最大卵泡尺寸",        # [max]
+        "卵泡发育趋势"         # -1 / 0 / 1
+    ],
+    keywords=[
+        [],  # 特殊提取，不参与关键词匹配
+        [],
+        [],
+        []
+    ],
+    unit_conversions=[
+        [],
+        [],
+        [],
+        []
+    ]
+)
+
+# 5. 泰国B超（虚空占位）
+ultrasound_tai_report = General_Report(
     report_name="中文B超",
     index=[
         "子宫内膜厚度",        # [左, 右]
@@ -750,7 +780,7 @@ blood_glucose_report = General_Report(
     keywords = [
         ["空腹血糖(FPG)", "空腹血糖", "FPG", "葡萄糖"],
         ["餐后2小时血糖(2hPG)", "餐后2小时血糖", "2hPG","餐后两小时血糖"],
-        ["糖化血红蛋白(HbA1c)", "糖化血红蛋白", "HbA1c"]
+        ["糖化血红蛋白(HbA1c)", "糖化血红蛋白", "HbA1c","糖化血红蛋白A1c"]
     ],
     unit_conversions = [
         [], # 空腹血糖(FPG)
@@ -840,9 +870,9 @@ lupus_report = General_Report(
         "狼疮初筛/狼疮确定(LA1/LA2)"
     ],
     keywords = [
-        ["LA1", "狼疮抗凝物筛选", "DRVVT Screen","dRVVT-S","狼疮抗凝物初筛试验1(LA1)"],
-        ["LA2", "狼疮抗凝物确证", "DRVVT Confirm","dRVVT-C","狼疮抗凝物确定试验(LA2)"],
-        ["LA1/LA2", "比值", "Ratio", "S/C","dRVVT-R","狼疮初筛/狼疮确定(标准化比值)"]
+        ["LA1", "狼疮抗凝物筛选", "DRVVT Screen","dRVVT-S","狼疮抗凝物初筛试验1(LA1)","狼疮筛查时间(dRVVT法)"],
+        ["LA2", "狼疮抗凝物确证", "DRVVT Confirm","dRVVT-C","狼疮抗凝物确定试验(LA2)","狼疮确认时间(dRVVT法)"],
+        ["LA1/LA2", "比值", "Ratio", "S/C","dRVVT-R","狼疮初筛/狼疮确定(标准化比值)","标准化比值(比值)(dRVVT法)"]
     ],
     unit_conversions = [
         [], # LA1
@@ -870,11 +900,11 @@ leukorrhea_routine_report = General_Report(
         "白细胞酯酶(LE)"
     ],
     keywords = [
-        ["阴道清洁度(Cleanliness)", "阴道清洁度", "清洁度", "Cleanliness"], # 阴道清洁度
+        ["阴道清洁度(Cleanliness)", "阴道清洁度", "清洁度", "Cleanliness","白带清洁度"], # 阴道清洁度
         ["白细胞(WBC)", "白细胞", "WBC", "白血球"], # 白细胞
         ["红细胞(RBC)", "红细胞", "RBC", "红血球"], # 红细胞
-        ["滴虫(TV)", "滴虫", "TV", "阴道毛滴虫", "滴虫感染提示"], # 滴虫
-        ["霉菌(FV)", "霉菌", "FV", "念珠菌", "假丝酵母菌", "真菌", "孢子", "菌丝", "霉菌感染提示"], # 霉菌
+        ["滴虫(TV)", "滴虫", "TV", "阴道毛滴虫", "滴虫感染提示","滴虫镜检"], # 滴虫
+        ["霉菌(FV)", "霉菌", "FV", "念珠菌", "假丝酵母菌", "真菌", "孢子", "菌丝", "霉菌感染提示","真菌镜检"], # 霉菌
         ["细菌性阴道病(BV)", "细菌性阴道病", "BV", "加德纳菌"], # 细菌性阴道病
         ["酸碱度(pH)", "酸碱度", "pH", "pH值"], # 酸碱度
         ["线索细胞(Clue Cells)", "线索细胞", "Clue Cell", "Clue Cells"], # 线索细胞
@@ -910,7 +940,7 @@ tumor_marker_report = General_Report(
         "癌胚抗原(CEA)"
     ],
     keywords = [
-        ["糖类抗原125(CA125)", "糖类抗原125", "CA125","糖链抗原125(CA125)"],
+        ["糖类抗原125(CA125)", "糖类抗原125", "CA125","糖链抗原125(CA125)","γ-糖链抗原125(CA125)"],
         ["甲胎蛋白(AFP)", "甲胎蛋白", "AFP"],
         ["癌胚抗原(CEA)", "癌胚抗原", "CEA"]
     ],
@@ -959,30 +989,22 @@ dna_fragmentation_index_report = General_Report(
     ]
 )
 
-# 999. 泰国B超（虚空占位）
-ultrasound_tai_report = General_Report(
-    report_name="中文B超",
+# 36. 胎儿报告
+ultrasound_embryo_report = General_Report(
+    report_name="胎儿报告",
     index=[
-        "子宫内膜厚度",        # [左, 右]
-        "卵泡总数",            # int
-        "最大卵泡尺寸",        # [max]
-        "卵泡发育趋势"         # -1 / 0 / 1
+        "胎儿报告指标占位符",        
+
     ],
     keywords=[
-        [],  # 特殊提取，不参与关键词匹配
-        [],
-        [],
-        []
+        [],  
+
     ],
     unit_conversions=[
         [],
-        [],
-        [],
-        []
+
     ]
 )
-
-
 
 # 注册表：ID -> ReportObject
 REPORT_REGISTRY = {
@@ -990,6 +1012,7 @@ REPORT_REGISTRY = {
     2: amh_report,
     3: sperm_report,
     4: b_ultrasound_report,
+    5: ultrasound_tai_report,
     6: immuno_five_report,
     7: coag_function_report,
     8: renal_function_report,
@@ -1020,5 +1043,5 @@ REPORT_REGISTRY = {
     33: neisseria_gonorrhoeae_culture_report,
     34: sperm_mitochondrial_membrane_potential_report,
     35: dna_fragmentation_index_report,
-    999: ultrasound_tai_report
+    36: ultrasound_embryo_report,
 }

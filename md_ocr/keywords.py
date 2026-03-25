@@ -132,6 +132,7 @@ REPORT_TYPE_LIST = [
                     ["neisseria_gonorrhoeae_culture", 33], #淋球菌 
                     ["membrane_potential", 34], #精子线粒体膜电位检测 
                     ["dna_fragmentation_index", 35], #dna碎片率
+                    ["ultrasound_embryo", 36], #胎儿报告
                     ["unclassified", UNCLASSIFIED_REPORT_ID], #无法分类报告
 ]
 
