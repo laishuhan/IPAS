@@ -179,7 +179,7 @@ def get_paths_all_info(pages):
         country = page.get("country", "")
         vig = page.get("vig", 0)
 
-        # categories = ["leukorrhea_routine_report"]
+        # categories = ["ultrasound_embryo"]
         # country = "china"
         # vig = 0
 
@@ -798,6 +798,14 @@ def extract_list_from_text(texts, num):
     return result
 
 def extract_str_list_from_text(texts, num):
+    """
+    从文本中提取最后一个括号（() 或 []）中的最多 num 个字符串结果，
+    返回一个长度为 num 的列表。
+
+    :param texts: 字符串文本
+    :param num: 要提取的字符串个数
+    :return: 包含 num 个字符串的列表，不足部分以 "不存在" 补齐
+    """
 
     bracket_contents = re.findall(r'\(([^()]*)\)|\[([^\[\]]*)\]', texts)
     if not bracket_contents:

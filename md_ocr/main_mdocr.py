@@ -166,10 +166,16 @@ def assemble_report_for_image(report_type, extracted_data, finder, image_user_in
     report_name = report_obj.report_name
     if report_obj:
         count = len(report_obj.index)
-        merged_data[8] = [-1] * count     # report_data
-        merged_data[9] = [""] * count     # report_unit
-        merged_data[10] = [-1] * count    # report_original_data 
-        merged_data[11] = [""] * count    # report_original_unit 
+        if report_type != 4:
+            merged_data[8] = [-1] * count     # report_data
+            merged_data[9] = [""] * count     # report_unit
+            merged_data[10] = [-1] * count    # report_original_data 
+            merged_data[11] = [""] * count    # report_original_unit 
+        else:
+            merged_data[8] = [[-1, -1], -1,[-1],-1]     # report_data
+            merged_data[9] = [["mm", "mm"], "",["mm"],""]     # report_unit
+            merged_data[10] = [[-1, -1], -1,[-1],-1]     # report_original_data 
+            merged_data[11] = [["mm", "mm"], "",["mm"],""]    # report_original_unit 
 
     # 1. 填充性别 (优先报告类型强制指定，其次图片识别)
     if report_type in FEMALE_ONLY_REPORT:
@@ -268,20 +274,26 @@ def assemble_report_for_image(report_type, extracted_data, finder, image_user_in
         print(f"\n====== 组装报告: 特殊报告 (Type {report_type}) ======")
         
         special_result = None
+        special_unit = None
+
         if finder:
             extractor = getattr(finder, extractor_name, None)
             if extractor:
                 try:
-                    # 仅针对单张图
                     chosen_key = ali_api_text_key_001 if report_type == 4 else ali_api_vision_key_001
-                    special_result = extractor(chosen_key)
+                    special_result, special_unit = extractor(chosen_key)
                 except Exception as e:
                     print(f"[WARN] 特殊提取失败: {e}")
 
         if special_result is not None:
-            # 单图模式下，直接赋值，不进行多页列表嵌套
             merged_data[8] = copy.deepcopy(special_result)
+
+            if special_unit is not None:
+                merged_data[9] = copy.deepcopy(special_unit)
+
             print(f"  - 特殊报告数据: {merged_data[8]}")
+            print(f"  - 特殊报告单位: {merged_data[9]}")
+
 
     #此类别总指标个数
     idx_count = len(merged_data[8])
@@ -621,8 +633,8 @@ def main(args):
     IS_INDEPENDENT_OCR = False #是否独立OCR
 
 
-    # IS_INDEPENDENT_ROTATE = False #是否独立旋转
-    # IS_INDEPENDENT_OCR = False #是否独立OCR
+    # IS_INDEPENDENT_ROTATE = True #是否独立旋转
+    # IS_INDEPENDENT_OCR = True #是否独立OCR
 
     if IS_INDEPENDENT_ROTATE == True or IS_INDEPENDENT_OCR == True:
         if IS_INDEPENDENT_ROTATE:

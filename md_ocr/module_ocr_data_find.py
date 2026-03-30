@@ -215,7 +215,16 @@ class FindMethod:
         for items in b_info_follicle:
             b_info.append(items)
 
-        return b_info
+
+        b_value = b_info
+        b_unit = [
+            ["mm", "mm"],   # 子宫内膜厚度 [左,右]
+            "",             # 卵泡总数
+            ["mm"],         # 最大卵泡尺寸 [max]
+            ""              # 卵泡发育趋势
+        ]
+
+        return b_value, b_unit
 
     def find_tct_info_in_vision(self, key):
         model_number = 0  # 视觉模型
@@ -238,7 +247,12 @@ class FindMethod:
 
         print(f"tct特殊提取模型原始输出:{response}\n")
 
-        return [response]
+
+        tct_value = [response]
+        tct_unit = [""]
+
+        return tct_value, tct_unit
+
 
     def find_mycoplasma_info_in_vision(self, key):
         model_number = 0  # 视觉模型
@@ -271,15 +285,16 @@ class FindMethod:
         print(f"支原体特殊提取模型原始输出:{response}\n")
 
         
-        result = extract_str_list_from_text(response, 2)
+        mycoplasma_value = extract_str_list_from_text(response, 2)
+        mycoplasma_unit = ["", ""]
         
-        return result
-
+        return mycoplasma_value, mycoplasma_unit
 
     def find_thalassemia_info_in_vision(self, key):
         model_number = 0  # 视觉模型
 
-        prompt = (
+        # 1. 提取字符串类指标：3个基因检测结论
+        prompt_str_part = (
             "这是一张地中海贫血检查报告图片。\n"
             "请你根据报告中的表格、勾选项、结论区内容，判断是否存在以下结论，"
             "并按顺序返回一个长度为3的Python列表：\n\n"
@@ -288,15 +303,15 @@ class FindMethod:
             "3. β-地贫基因检测(17种突变)\n"
             "规则：\n"
             "- 如果指标名称明确出现且结论为存在，对应位置为 阳性\n"
-            "- 如果指标名称明确出现且结论为不为存在，对应位置为 阴性\n"
+            "- 如果指标名称明确出现且结论为不存在，对应位置为 阴性\n"
             "- 如果指标名称没有出现，对应位置为 不存在\n\n"
-            "只返回 Python 列表，例如：[阳性, 阴性，不存在]\n"
+            "只返回 Python 列表，例如：[阳性, 阴性, 不存在]\n"
             "不要输出任何解释性文字。"
         )
 
-        response = ali_api_vision(
+        response_str_part = ali_api_vision(
             DEFAULT_VISION_EXTRATCT_SYSTEM_PROMPT,
-            prompt,
+            prompt_str_part,
             self.img_path,
             model_number,
             key,
@@ -304,14 +319,46 @@ class FindMethod:
             temperature=0.0,
         )
 
-        print(f"支原体特殊提取模型原始输出:{response}\n")
+        print(f"地贫特殊提取模型原始输出 字符类指标部分:{response_str_part}\n")
 
-        result = extract_str_list_from_text(response, 3)
-        
-        return result
- 
+        thalassemia_value_str_part = extract_str_list_from_text(response_str_part, 3)
+        thalassemia_unit_str_part = ["", "", ""]
 
-        
+        # 2. 提取数字类指标：Hb A(血红蛋白A) 和 Hb A2(血红蛋白A2)
+        prompt_num_part = (
+            "这是一张地中海贫血检查报告图片。\n"
+            "请你根据报告中的表格内容，提取以下两个数字类指标的值，"
+            "并按顺序返回一个长度为2的Python列表：\n\n"
+            "1. Hb A(血红蛋白A)\n"
+            "2. Hb A2(血红蛋白A2)\n\n"
+            "要求：\n"
+            "- 只提取数值部分，不要带单位\n"
+            "- 如果某项未找到，返回 -1\n"
+            "- 只返回 Python 列表，例如：[96.8, 2.7]\n"
+            "不要输出任何解释性文字。"
+        )
+
+        response_num_part = ali_api_vision(
+            DEFAULT_VISION_EXTRATCT_SYSTEM_PROMPT,
+            prompt_num_part,
+            self.img_path,
+            model_number,
+            key,
+            prompt_enhancer=DEFAULT_VISION_EXTRATCT_ENHANCER,
+            temperature=0.0,
+        )
+
+        print(f"地贫特殊提取模型原始输出 数字类指标部分:{response_num_part}\n")
+
+        thalassemia_value_num_part = extract_list_from_text(response_num_part, 2)
+        thalassemia_unit_num_part = ["%", "%"]
+
+        # 3. 合并
+        thalassemia_value = thalassemia_value_str_part + thalassemia_value_num_part
+        thalassemia_unit = thalassemia_unit_str_part + thalassemia_unit_num_part
+
+        return thalassemia_value, thalassemia_unit
+
     def find_neisseria_gonorrhoeae_culture_info_in_vision(self, key):
         model_number = 0  # 视觉模型
 
@@ -336,7 +383,10 @@ class FindMethod:
 
         print(f"淋球菌特殊提取模型原始输出:{response}\n")
 
-        return [response]
+        neisseria_gonorrhoeae_culture_value = [response]
+        neisseria_gonorrhoeae_culture_unit = [""]
+
+        return neisseria_gonorrhoeae_culture_value, neisseria_gonorrhoeae_culture_unit
     
     def smart_secondary_extraction(
         self,

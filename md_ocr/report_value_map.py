@@ -188,6 +188,8 @@ REPORT_VALUE_FILTER_MAP = {
         0: {"remove_chars": COMMON_REMOVE_CHARS},  # a-地贫基因检测(3种缺失型)
         1: {"remove_chars": COMMON_REMOVE_CHARS},  # a-地贫基因检测(3种非缺失型)
         2: {"remove_chars": COMMON_REMOVE_CHARS},  # β-地贫基因检测(17种突变)
+        3: {"remove_chars": COMMON_REMOVE_CHARS},  # Hb A(血红蛋白A)
+        4: {"remove_chars": COMMON_REMOVE_CHARS},  # Hb A2(血红蛋白A2)
     },
 
     # ===== 报告类型 17 : 贫血四项 =====
@@ -596,6 +598,8 @@ REPORT_VALUE_MAP = {
         0: [] + NEGATIVE_POSITIVE_RULE ,  # a-地贫基因检测(3种缺失型)
         1: [] + NEGATIVE_POSITIVE_RULE,  # a-地贫基因检测(3种非缺失型)
         2: [] + NEGATIVE_POSITIVE_RULE,  # β-地贫基因检测(17种突变)
+        3: [ZERO_TO_NULL_RULE, TEXT_PLACEHOLDER_RULE],  # Hb A(血红蛋白A)
+        4: [ZERO_TO_NULL_RULE, TEXT_PLACEHOLDER_RULE],  # Hb A2(血红蛋白A2)
     },
 
     # ===== 报告类型 17 : 贫血四项 =====
@@ -929,6 +933,8 @@ REPORT_VALUE_KEEP_MAP = {
         0: {"keep_contains": COMMON_KEEP_KEYWORDS},  # a-地贫基因检测(3种缺失型)
         1: {"keep_contains": COMMON_KEEP_KEYWORDS},  # a-地贫基因检测(3种非缺失型)
         2: {"keep_contains": COMMON_KEEP_KEYWORDS},  # β-地贫基因检测(17种突变)
+        3: {"keep_contains": COMMON_KEEP_KEYWORDS},  # Hb A(血红蛋白A)
+        4: {"keep_contains": COMMON_KEEP_KEYWORDS},  # Hb A2(血红蛋白A2)
     },
 
     # ===== 报告类型 17 : 贫血四项 =====

@@ -23,6 +23,7 @@
 #0303-13:42 jww add "前向运动精子活动率"(type 3)
 #0309-10:05 jww add "孕酮P"(type 1)
 #0316-10:20 jww add "γ-糖链抗原125(CA125)"(type 32)
+#0330-16:14 laishuhan add Hb A,Hb A2
 class General_Report: 
     def __init__(self, report_name, index, unit_conversions, keywords=None):
         self.report_name = report_name
@@ -135,7 +136,7 @@ b_ultrasound_report = General_Report(
         "卵泡发育趋势"         # -1 / 0 / 1
     ],
     keywords=[
-        [],  # 特殊提取，不参与关键词匹配
+        [],  
         [],
         [],
         []
@@ -158,7 +159,7 @@ ultrasound_tai_report = General_Report(
         "卵泡发育趋势"         # -1 / 0 / 1
     ],
     keywords=[
-        [],  # 特殊提取，不参与关键词匹配
+        [],  
         [],
         [],
         []
@@ -506,23 +507,28 @@ hcg_pregnancy_report = General_Report(
     ]
 )
 
-# 16. 地中海贫血
 thalassemia_report = General_Report(
-    report_name = "地中海贫血症",
-    index = [
-        "a-地贫基因检测(3种缺失型)", 
-        "a-地贫基因检测(3种非缺失型)", 
-        "β-地贫基因检测(17种突变)"
+    report_name="地中海贫血症",
+    index=[
+        "a-地贫基因检测(3种缺失型)",
+        "a-地贫基因检测(3种非缺失型)",
+        "β-地贫基因检测(17种突变)",
+        "Hb A(血红蛋白A)",
+        "Hb A2(血红蛋白A2)",
     ],
-    keywords = [
-        ["a-地贫基因检测(3种缺失型)", "a-地贫缺失型", "α-地贫缺失型","α-地贫基因检测(3种缺失型)"],
-        ["a-地贫基因检测(3种非缺失型)", "a-地贫非缺失型", "α-地贫突变型","α-地贫基因检测(3种非缺失型)"],
-        ["β-地贫基因检测(17种突变)", "β-地贫基因检测", "β-地贫突变"]
+    keywords=[
+        ["a-地贫基因检测(3种缺失型)", "a-地贫缺失型", "α-地贫缺失型", "α-地贫基因检测(3种缺失型)"],
+        ["a-地贫基因检测(3种非缺失型)", "a-地贫非缺失型", "α-地贫突变型", "α-地贫基因检测(3种非缺失型)"],
+        ["β-地贫基因检测(17种突变)", "β-地贫基因检测", "β-地贫突变"],
+        ["Hb A", "HBA", "HbA", "血红蛋白A"],
+        ["Hb A2", "HBA2", "HbA2", "血红蛋白A2"],
     ],
-    unit_conversions = [
-        [], # a-地贫基因检测(3种缺失型)
-        [], # a-地贫基因检测(3种非缺失型)
-        []  # β-地贫基因检测(17种突变)
+    unit_conversions=[
+        [],
+        [],
+        [],
+        [],
+        [],
     ]
 )
 
