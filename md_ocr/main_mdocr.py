@@ -148,7 +148,7 @@ def process_and_save_train_samples(final_report_info_map, save_path):
         
 
 # --- 修改：单图单报告组装逻辑 (不再依赖全局 Pool 和 模板) ---
-def assemble_report_for_image(report_type, extracted_data, finder, image_user_info, global_context, image_path, template_id=0):
+def assemble_report_for_image(report_type, extracted_data, finder, image_user_info, global_context, image_path, template_id, ocr_text):
     """
     针对单张图片、单个报告类型进行组装
     """
@@ -477,7 +477,9 @@ def assemble_report_for_image(report_type, extracted_data, finder, image_user_in
         "report_data": merged_data[8],
         "report_unit": merged_data[9],
         "report_original_data": merged_data[10],  
-        "report_original_unit": merged_data[11]   
+        "report_original_unit": merged_data[11],
+        "ocr_text": ocr_text
+  
     }
 
 def process_single_image_pipeline(item, ocr_text, global_context, is_collect_train_info=False, collect_train_info_from=None):
@@ -487,6 +489,7 @@ def process_single_image_pipeline(item, ocr_text, global_context, is_collect_tra
     image_name = os.path.basename(path)
 
     print(f"开始处理图片: {image_name}, 目标报告类型: {target_report_types}")
+    print(f"图片OCR结果为:{ocr_text}")
 
     template_id = check_template_type(ocr_text)
     if template_id != 0:
@@ -503,7 +506,7 @@ def process_single_image_pipeline(item, ocr_text, global_context, is_collect_tra
         name, sex, age, time = get_user_info(
             path, ocr_text,
             ali_api_vision_key_001, ali_api_text_key_001,
-            vision_or_text="text"
+            vision_or_text="vision"
         )
         return {"name": name, "sex": sex, "age": age, "time": time}
 
@@ -600,7 +603,8 @@ def process_single_image_pipeline(item, ocr_text, global_context, is_collect_tra
                     image_user_info,
                     global_context,
                     path,   # 新增
-                    template_id
+                    template_id,
+                    ocr_text
                 )
                 if report_res:
                     image_reports.append(report_res)
