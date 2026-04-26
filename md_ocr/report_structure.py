@@ -25,6 +25,7 @@
 #0316-10:20 jww add "γ-糖链抗原125(CA125)"(type 32)
 #0330-16:14 laishuhan add Hb A,Hb A2
 #0409-15:46 jww add "HIV抗原抗体(化学发光法)","丙型肝炎病毒抗体(化学发光法)"(type 12)
+#0426-12:00 laishuhan 修正指标顺序
 class General_Report: 
     def __init__(self, report_name, index, unit_conversions, keywords=None):
         self.report_name = report_name
