@@ -114,8 +114,33 @@ class FindMethod:
         )
 
         return extract_list_from_text(content_text, expected_length)
+    
+    def _fetch_b_info_vision_task(
+        self,
+        prompt: str,
+        expected_length: int,
+        sys_prompt: str,
+        model_number: int,
+        key: str,
+        prompt_enhancer: Optional[str] = None,
+        temperature: float = 1.0,
+        top_p: float = 0.9,
+    ):
+        content_text = ali_api_vision(
+            sys_prompt=sys_prompt,
+            prompt=prompt,
+            image_input=self.img_path,   # ✅ 对应 input_text
+            model_number=model_number,
+            api_key=key,
+            prompt_enhancer=prompt_enhancer,
+            temperature=temperature,
+            top_p=top_p,
+        )
 
-    def find_b_info_in_text(self, key):
+        return extract_list_from_text(content_text, expected_length)
+
+
+    def find_b_info_in_text(self, key_text, key_vision):
         input_text = self.ocr_text
         model_number = 2
 
@@ -146,7 +171,7 @@ class FindMethod:
                 input_text=input_text,
                 sys_prompt=DEFAULT_TEXT_EXTRATCT_SYSTEM_PROMPT,
                 model_number=model_number,
-                key=key,
+                key=key_text,
                 temperature=0.0,
             )
 
@@ -157,7 +182,7 @@ class FindMethod:
                 input_text=input_text,
                 sys_prompt=DEFAULT_TEXT_EXTRATCT_SYSTEM_PROMPT,
                 model_number=model_number,
-                key=key,
+                key=key_text,
                 temperature=0.0,
             )
 
@@ -168,7 +193,7 @@ class FindMethod:
                 input_text=input_text,
                 sys_prompt=DEFAULT_TEXT_EXTRATCT_SYSTEM_PROMPT,
                 model_number=model_number,
-                key=key,
+                key=key_text,
                 temperature=0.0,
             )
 
@@ -179,7 +204,7 @@ class FindMethod:
                 input_text=input_text,
                 sys_prompt=DEFAULT_TEXT_EXTRATCT_SYSTEM_PROMPT,
                 model_number=model_number,
-                key=key,
+                key=key_text,
                 temperature=0.0,
             )
 
@@ -223,6 +248,116 @@ class FindMethod:
             ["mm"],         # 最大卵泡尺寸 [max]
             ""              # 卵泡发育趋势
         ]
+
+        # ===============================
+        # ✅ 视觉模型兜底机制：流程与文本大模型完全一致
+        # ===============================
+        need_fallback = (
+            b_value[0] == [-1, -1] and
+            b_value[1] <= 0 and
+            b_value[2] == [-1]
+        )
+
+        if need_fallback:
+            print("⚠️ 文本抽取失败，触发视觉模型兜底提取")
+
+            try:
+                with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+                    future_intima = executor.submit(
+                        self._fetch_b_info_vision_task,
+                        prompt=prompt_intima,
+                        expected_length=2,
+                        sys_prompt=DEFAULT_VISION_EXTRATCT_SYSTEM_PROMPT,
+                        model_number=0,
+                        key=key_vision,
+                        prompt_enhancer=DEFAULT_VISION_EXTRATCT_ENHANCER,
+                        temperature=0.0,
+                    )
+
+                    future_acc = executor.submit(
+                        self._fetch_b_info_vision_task,
+                        prompt=follicle_acc_info,
+                        expected_length=1,
+                        sys_prompt=DEFAULT_VISION_EXTRATCT_SYSTEM_PROMPT,
+                        model_number=0,
+                        key=key_vision,
+                        prompt_enhancer=DEFAULT_VISION_EXTRATCT_ENHANCER,
+                        temperature=0.0,
+                    )
+
+                    future_right = executor.submit(
+                        self._fetch_b_info_vision_task,
+                        prompt=prompt_follicle_right,
+                        expected_length=2,
+                        sys_prompt=DEFAULT_VISION_EXTRATCT_SYSTEM_PROMPT,
+                        model_number=0,
+                        key=key_vision,
+                        prompt_enhancer=DEFAULT_VISION_EXTRATCT_ENHANCER,
+                        temperature=0.0,
+                    )
+
+                    future_left = executor.submit(
+                        self._fetch_b_info_vision_task,
+                        prompt=prompt_follicle_left,
+                        expected_length=2,
+                        sys_prompt=DEFAULT_VISION_EXTRATCT_SYSTEM_PROMPT,
+                        model_number=0,
+                        key=key_vision,
+                        prompt_enhancer=DEFAULT_VISION_EXTRATCT_ENHANCER,
+                        temperature=0.0,
+                    )
+
+
+                    b_info_intima_v = future_intima.result()
+                    b_info_follicle_acc_v = future_acc.result()
+                    b_info_follicle_right_v = future_right.result()
+                    b_info_follicle_left_v = future_left.result()
+
+                # ===============================
+                # ✅ 后处理逻辑与文本抽取完全一致
+                # ===============================
+                b_info_intima_v = [-1 if x == 0 else x for x in b_info_intima_v]
+
+                b_info_follicle_right_v = [-1 if x == 0 else x for x in b_info_follicle_right_v]
+                if b_info_follicle_right_v[0] == -1:
+                    b_info_follicle_right_v = [b_info_follicle_right_v[0], -1]
+
+                b_info_follicle_left_v = [-1 if x == 0 else x for x in b_info_follicle_left_v]
+                if b_info_follicle_left_v[0] == -1:
+                    b_info_follicle_left_v = [b_info_follicle_left_v[0], -1]
+
+                b_info_follicle_v = [-1, -1, -1]
+
+                right_count_v = (
+                    0 if b_info_follicle_right_v[0] == -1
+                    else b_info_follicle_right_v[0]
+                )
+                left_count_v = (
+                    0 if b_info_follicle_left_v[0] == -1
+                    else b_info_follicle_left_v[0]
+                )
+
+                b_info_follicle_v[0] = right_count_v + left_count_v
+                if b_info_follicle_v[0] < 0:
+                    b_info_follicle_v[0] = 0
+
+                b_info_follicle_v[1] = [
+                    max(b_info_follicle_right_v[1], b_info_follicle_left_v[1])
+                ]
+                b_info_follicle_v[2] = b_info_follicle_acc_v[0]
+
+                b_info_v = []
+                b_info_v.append(b_info_intima_v)
+                for item in b_info_follicle_v:
+                    b_info_v.append(item)
+
+                b_value = b_info_v
+
+                print(f"✅ 视觉兜底成功: {b_value}")
+
+            except Exception as e:
+                print(f"[WARN] 视觉兜底异常: {e}")
+
 
         return b_value, b_unit
 

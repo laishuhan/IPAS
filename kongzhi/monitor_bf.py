@@ -193,10 +193,6 @@ def main_kongzhi(folder_path):
     if not check_point(folder_path, "processed_report_info.json", start_time, is_show=1):
         print("processed_report_info.json-决策树")
         return  # 文件不存在，终止处理流程
-    
-    time.sleep(0.2) #等待文件稳定
-    # 综合分析
-    run_eval_core(folder_path)
 
     # ==================== 追加processed_report_info.json 汇总到 eval_train_dataset.jsonl  ====================
     try:
@@ -228,14 +224,16 @@ def main_kongzhi(folder_path):
         print(f"追加 eval_train_dataset.jsonl 失败: {e}")
     # ===================================================================================
 
+    # 综合分析
+    #run_eval_core(folder_path)
+    # if not check_point(folder_path, "eval_info.txt", start_time, is_show=1):
+    #     print("未生成eval_info.txt", "后端错误报告-综合评估！")
+    #     return  # 文件不存在，终止处理流程
+
     # 大语言模型润色 api
     model_type = 2
     polish_type = 0 #默认润色线
     run_md_llm_api(folder_path, polish_type, model_type)
-
-    if not check_point(folder_path, "eval_info.txt", start_time, is_show=1):
-        print("未生成eval_info.txt", "后端错误报告-综合评估！")
-        return  # 文件不存在，终止处理流程
 
     if not check_point(folder_path, "temp_report_polished_merge.txt", start_time, is_show=1):
         print("未生成temp_report_polished_merge.txt", "后端错误报告-大模型润色！")

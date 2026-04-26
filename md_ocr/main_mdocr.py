@@ -21,6 +21,7 @@ from module_ocr_data_process import get_diagnosis_text_out
 from module_ocr_data_process import get_img_meta
 from module_ocr_data_process import find_all_match_key_alias, pick_best_match_by_unit_symbols
 from module_ocr_data_process import convert_numbers_to_str
+from module_ocr_data_process import apply_cross_report_conflict_rules
 
 from module_ocr_data_find import FindMethod
 
@@ -280,8 +281,10 @@ def assemble_report_for_image(report_type, extracted_data, finder, image_user_in
             extractor = getattr(finder, extractor_name, None)
             if extractor:
                 try:
-                    chosen_key = ali_api_text_key_001 if report_type == 4 else ali_api_vision_key_001
-                    special_result, special_unit = extractor(chosen_key)
+                    if report_type == 4:
+                        special_result, special_unit = extractor(ali_api_text_key_001, ali_api_vision_key_001)
+                    else:
+                        special_result, special_unit = extractor(ali_api_vision_key_001)
                 except Exception as e:
                     print(f"[WARN] 特殊提取失败: {e}")
 
@@ -742,8 +745,13 @@ def main(args):
     if IS_COLLECT_TRAIN_INFO == True:
         # 4.导出并保存训练样本
         process_and_save_train_samples(final_report_info_map, TRAIN_REPORT_INFO_PATH)
+    
+    print("跨报告冲突修正前数据：", original_data_structure)
+        
+    # 5. 跨报告冲突修正（新增）
+    original_data_structure = apply_cross_report_conflict_rules(original_data_structure)
 
-    # 5. 调用函数转换并保存为目标格式
+    # 6. 调用函数转换并保存为目标格式
     # 直接使用内存中的 original_data_structure，无需再次读取文件
     required_data_structure = convert_and_save_target_format(original_data=original_data_structure)
 

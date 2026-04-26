@@ -443,6 +443,35 @@ LLM_REEXTRACT_CONFIG = {
     }
 }
 
+# =============================
+# 跨报告冲突修正规则（新增）
+# =============================
+# 语义：
+# 当同一张图片中包含 include_report_types 中的所有类型时，
+# 若 target_report_type 中的 target_index 指标的单位命中 target_units，
+# 则将该指标的 value 和 unit 都置为 -1
+
+CROSS_REPORT_CONFLICT_RULES = [
+
+    {
+        # 同时出现的报告类型（必须全部包含）
+        "include_report_types": [10, 31],  # 血常规 + 白带常规
+
+        # 被修正的目标报告类型
+        "target_report_type": 31,  # 白带常规
+
+        # 目标指标 index（白带常规第2个指标：白细胞）
+        "target_index": 1,
+
+        # 命中这些单位时触发
+        "target_units": ["×10^9/L", "10^9/L", "×10/L", "10/L"],
+
+        "reason": "血常规与白带常规混合场景，白带白细胞单位异常，判为误识别"
+    },
+
+]
+
+
 
 
 

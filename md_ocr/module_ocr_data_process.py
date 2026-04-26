@@ -13,6 +13,7 @@ from keywords import KEY_NORMALIZE_CONFIG
 from report_value_map import REPORT_VALUE_KEEP_MAP
 from keywords import UNCLASSIFIED_REPORT_ID
 from keywords import UNCERTAINTY_MID
+from keywords import CROSS_REPORT_CONFLICT_RULES
 
 from report_value_map import REPORT_VALUE_FILTER_MAP 
 from report_value_map import REPORT_VALUE_MAP
@@ -428,8 +429,8 @@ def try_convert_unit(val, unit_str, unit_conver_config):
     return val, unit_str
 
 def find_best_match_key(
-    alias_list,
-    candidate_keys,
+    alias_list, #词库关键词
+    candidate_keys, #模型输出关键词
     report_type,
     idx_num,
     template_id,
@@ -441,46 +442,67 @@ def find_best_match_key(
     - matched_alias: alias_list 里命中的那个词（用于打印“命中-xxx”）
     """
     if not alias_list or not candidate_keys:
+        print(
+            f"[find_best_match_key] 空输入，跳过 | "
+            f"report_type={report_type}, idx_num={idx_num}, template_id={template_id}, "
+            f"alias_list={alias_list}, candidate_keys={candidate_keys}"
+        )
         return None, None
 
     config = KEY_NORMALIZE_CONFIG
     remove_chars = config.get("remove_chars", [])
 
     def normalize(s: str) -> str:
+        s = str(s)
 
-        """根据参数统一做字符串归一化"""
         for remove_char in remove_chars:
             s = s.replace(remove_char, "")
 
         if case_insensitive:
             s = s.lower()
 
-        #  按 report_type / idx_num / template_id追加规则（示例）
-        if report_type == 0:
-            pass
-        if idx_num == 0:
-            pass
-        if template_id == 1:
-            pass
-
         return s
 
-    # 构建 normalized_key -> original_key 的映射
-    normalized_key_map = {
-        normalize(key): key
-        for key in candidate_keys
-    }
+    candidate_keys = list(candidate_keys)
+
+    print(
+        f"\n[find_best_match_key] 开始逐词对比 | "
+        f"report_type={report_type}, idx_num={idx_num}, template_id={template_id}"
+    )
 
     for alias in alias_list:
         normalized_alias = normalize(alias)
-        if normalized_alias in normalized_key_map:
-            return normalized_key_map[normalized_alias], alias
+
+        for candidate_key in candidate_keys:
+            normalized_candidate_key = normalize(candidate_key)
+
+            is_hit = normalized_alias == normalized_candidate_key
+
+            print(
+                f"[find_best_match_key] 对比: "
+                f"词库关键词='{alias}' -> '{normalized_alias}' | "
+                f"模型关键词='{candidate_key}' -> '{normalized_candidate_key}' | "
+                f"命中={is_hit}"
+            )
+
+            if is_hit:
+                print(
+                    f"[find_best_match_key] ✅ 最终命中 | "
+                    f"matched_key='{candidate_key}', matched_alias='{alias}'"
+                )
+                return candidate_key, alias
+
+    print(
+        f"[find_best_match_key] 全部未命中 | "
+        f"report_type={report_type}, idx_num={idx_num}, template_id={template_id}"
+    )
 
     return None, None
 
+
 def find_all_match_key_alias(
-    alias_list,
-    candidate_keys,
+    alias_list, #词库关键词
+    candidate_keys, #模型输出关键词
     report_type,
     idx_num,
     template_id,
@@ -489,10 +511,17 @@ def find_all_match_key_alias(
     """
     Return all matches in alias_list order as a list of (matched_key, matched_alias).
     - matched_key: key in candidate_keys that exists in extracted JSON dict
-    - matched_alias: the alias hit (for logging)
-    De-duplicates matched_key while keeping order.
+    - matched_alias: the alias hit，词库中命中的关键词
+
+    调试输出：
+    - 逐个输出“词库关键词”与“模型提取关键词”的归一化前后对比
     """
     if not alias_list or not candidate_keys:
+        print(
+            f"[find_all_match_key_alias] 空输入，跳过 | "
+            f"report_type={report_type}, idx_num={idx_num}, template_id={template_id}, "
+            f"alias_list={alias_list}, candidate_keys={candidate_keys}"
+        )
         return []
 
     config = KEY_NORMALIZE_CONFIG
@@ -507,37 +536,61 @@ def find_all_match_key_alias(
         if case_insensitive:
             s = s.lower()
 
-        # Hooks for report_type / idx_num / template_id if you later add custom rules
-        if report_type == 0:
-            pass
-        if idx_num == 0:
-            pass
-        if template_id == 1:
-            pass
-
         return s
 
-    # normalized_key -> original_key (first one wins to stay consistent with find_best_match_key)
-    normalized_key_map = {}
-    for key in candidate_keys:
-        nk = normalize(key)
-        if nk and nk not in normalized_key_map:
-            normalized_key_map[nk] = key
+    candidate_keys = list(candidate_keys)
 
-    hits = []
+    print(
+        f"\n[find_all_match_key_alias] 开始逐词对比 | "
+        f"report_type={report_type}, idx_num={idx_num}, template_id={template_id}"
+    )
+
+    matches = []
+    seen_keys = set()
+
     for alias in alias_list:
-        na = normalize(alias)
-        if na in normalized_key_map:
-            hits.append((normalized_key_map[na], alias))
+        normalized_alias = normalize(alias)
 
-    # De-dup matched_key keep order
-    seen = set()
-    out = []
-    for k, a in hits:
-        if k not in seen:
-            out.append((k, a))
-            seen.add(k)
-    return out
+        for candidate_key in candidate_keys:
+            normalized_candidate_key = normalize(candidate_key)
+
+            is_hit = normalized_alias == normalized_candidate_key
+
+            print(
+                f"[find_all_match_key_alias] 对比: "
+                f"词库关键词='{alias}' -> '{normalized_alias}' | "
+                f"模型关键词='{candidate_key}' -> '{normalized_candidate_key}' | "
+                f"命中={is_hit}"
+            )
+
+            if is_hit:
+                if candidate_key not in seen_keys:
+                    print(
+                        f"[find_all_match_key_alias] ✅ 记录命中 | "
+                        f"matched_key='{candidate_key}', matched_alias='{alias}'"
+                    )
+
+                    matches.append((candidate_key, alias))
+                    seen_keys.add(candidate_key)
+                else:
+                    print(
+                        f"[find_all_match_key_alias] 命中但已记录，跳过重复 | "
+                        f"matched_key='{candidate_key}', matched_alias='{alias}'"
+                    )
+
+    if matches:
+        print(
+            f"[find_all_match_key_alias] 最终命中列表={matches} | "
+            f"report_type={report_type}, idx_num={idx_num}, template_id={template_id}"
+        )
+    else:
+        print(
+            f"[find_all_match_key_alias] 全部未命中 | "
+            f"report_type={report_type}, idx_num={idx_num}, template_id={template_id}"
+        )
+
+    return matches
+
 
 
 def pick_best_match_by_unit_symbols(extracted_data, candidates, unit_symbols):
@@ -1075,4 +1128,88 @@ def convert_numbers_to_str(lst):
             # 其他类型保持不变
             result.append(item)
     return result
+
+def apply_cross_report_conflict_rules(original_data_structure):
+    """
+    根据 CROSS_REPORT_CONFLICT_RULES 配置，对跨报告冲突进行修正
+    """
+
+    if not original_data_structure:
+        return original_data_structure
+
+    info = original_data_structure.get("info", {})
+
+    if not isinstance(info, dict):
+        return original_data_structure
+
+    for img_name, content in info.items():
+
+        # 跳过 total_img_number / solvable_img_number 等统计字段
+        if not isinstance(content, dict):
+            continue
+
+        reports = content.get("data", [])
+
+        if not isinstance(reports, list):
+            continue
+
+        report_types = {
+            rep.get("report_type")
+            for rep in reports
+            if isinstance(rep, dict)
+        }
+
+        for rule in CROSS_REPORT_CONFLICT_RULES:
+            include_types = set(rule.get("include_report_types", []))
+            target_type = rule.get("target_report_type")
+            target_index = rule.get("target_index")
+            target_units = set(rule.get("target_units", []))
+            reason = rule.get("reason", "")
+
+            if target_index is None:
+                continue
+
+            if not include_types.issubset(report_types):
+                continue
+
+            for rep in reports:
+                if not isinstance(rep, dict):
+                    continue
+
+                if rep.get("report_type") != target_type:
+                    continue
+
+                report_data = rep.get("report_data", [])
+                report_unit = rep.get("report_unit", [])
+                original_data = rep.get("report_original_data", [])
+                original_unit = rep.get("report_original_unit", [])
+
+                if not isinstance(report_unit, list):
+                    continue
+
+                if target_index >= len(report_unit):
+                    continue
+
+                unit = report_unit[target_index]
+
+                if unit in target_units:
+                    print(
+                        f"[CrossRule] 图片={img_name} | "
+                        f"type={target_type} idx={target_index} unit={unit} "
+                        f"命中规则 -> 置为-1 | reason={reason}"
+                    )
+
+                    if isinstance(report_data, list) and target_index < len(report_data):
+                        report_data[target_index] = -1
+
+                    if isinstance(report_unit, list) and target_index < len(report_unit):
+                        report_unit[target_index] = -1
+
+                    if isinstance(original_data, list) and target_index < len(original_data):
+                        original_data[target_index] = -1
+
+                    if isinstance(original_unit, list) and target_index < len(original_unit):
+                        original_unit[target_index] = -1
+
+    return original_data_structure
 
