@@ -572,6 +572,7 @@ liver_function_report = General_Report(
         "总蛋白(TP)",
         "球蛋白(GLO)",
         "白蛋白/球蛋白比值(A/G)",
+        "脂蛋白(a)",
         "腺苷脱氨酶(ADA)",
         "碱性磷酸酶(ALP)",
         "总胆汁酸(TBA)",
@@ -590,6 +591,7 @@ liver_function_report = General_Report(
         ["总蛋白(TP)", "总蛋白", "TP"],
         ["球蛋白(GLO)", "球蛋白", "GLO", "GLB"],
         ["白蛋白/球蛋白比值(A/G)", "白蛋白/球蛋白比值", "A/G", "A/G比值","白蛋白/球蛋白","白球比例","白蛋白/球蛋白(A/G)"],
+        ["脂蛋白(a)"],
         ["腺苷脱氨酶(ADA)", "腺苷脱氨酶", "ADA"],
         ["碱性磷酸酶(ALP)", "碱性磷酸酶", "ALP", "AKP"],
         ["总胆汁酸(TBA)", "总胆汁酸", "TBA"],
@@ -608,6 +610,7 @@ liver_function_report = General_Report(
         [],  # 总蛋白(TP)
         [],  # 球蛋白(GLO)
         [],  # 白蛋白/球蛋白比值(A/G)
+        [],  # 脂蛋白(a)
         [],  # 腺苷脱氨酶(ADA)
         [],  # 碱性磷酸酶(ALP)
         [],  # 总胆汁酸(TBA)
