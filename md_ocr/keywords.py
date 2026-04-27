@@ -368,11 +368,19 @@ SECONDARY_EXTRACTION_CONFIG = {
 # - If only one candidate is matched, it is used as-is.
 # - If no candidate contains the preferred unit symbol(s), the first match in alias order is used.
 MULTI_MATCH_UNIT_PREFERENCE = {
-    # Sperm report (type=3): prefer percentage unit for Motility and Progressive motile
+    # 精子
     3: {
         6: {"unit_symbols": ["%", "％"]},  # 精子总活力(Motility) aka 总活力(PR+NP)
         7: {"unit_symbols": ["%", "％"]},  # 前向精子百分率(Progressive motile) aka 前向运动精子(PR)
-    }
+    },
+    # 血常规
+    10: {
+        0: {"unit_symbols": ["×10^9/L", "10^9/L", "×10/L", "10/L"]}, # 白细胞
+    },
+    # 白带常规
+    31: {
+        1: {"unit_symbols": ["", "/hpf","hpf","/HPF","HPF"]}, # 白细胞
+    },
 }
 
 
