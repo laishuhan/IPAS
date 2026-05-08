@@ -77,6 +77,7 @@ def main_kongzhi(folder_path):
     if not check_point(folder_path, "task_record.json", start_time, is_show=1):
         print("未生成task_record.json-接口")
         return  # 文件不存在，终止处理流程
+    task_record_time = time.time() - start_time
 
     task_record_path = os.path.join(folder_path, "task_record.json")
     basic_info = get_basic_info(task_record_path)
@@ -90,6 +91,7 @@ def main_kongzhi(folder_path):
     if not check_point(folder_path, "temp_report_info.json", start_time, is_show=1):
         print("未生成 temp_report_info.json-数据提取")
         return  # 文件不存在，终止处理流程
+    temp_report_info_time = time.time() - start_time
     
     if not check_point(folder_path, "train_samples.jsonl", start_time, timeout = 0, is_show=1):
         print("微调数据提取模式关闭，未生成 train_samples.jsonl-数据提取")
@@ -178,6 +180,8 @@ def main_kongzhi(folder_path):
     if not check_point(folder_path, "report_info.json", start_time, is_show=1):
         print("未生成 report_info.json-数据提取")
         return  # 文件不存在，终止处理流程
+    
+    report_info_time = time.time() - start_time
 
     time.sleep(0.2) #等待文件稳定
     # 决策树
@@ -193,6 +197,8 @@ def main_kongzhi(folder_path):
     if not check_point(folder_path, "processed_report_info.json", start_time, is_show=1):
         print("processed_report_info.json-决策树")
         return  # 文件不存在，终止处理流程
+    d_tree_time = time.time() - start_time
+    
 
     # ==================== 追加processed_report_info.json 汇总到 eval_train_dataset.jsonl  ====================
     try:
@@ -272,6 +278,8 @@ def main_kongzhi(folder_path):
     if not check_point(folder_path, "report_polished_merge.txt", start_time, is_show=1):
         print("未生成report_polished_merge.txt", "后端错误报告-综合评估与润色结果融合！")
         return
+    report_polished_merge = time.time() - start_time
+
 
     # 确保当前进程的日志已落盘（可选，但推荐）
     try:
@@ -281,6 +289,29 @@ def main_kongzhi(folder_path):
     # 裁剪日志文件，防止过大
     MAX_LOG_SIZE = 10  # 最大日志尺寸10 MB
     trim_log_if_too_large(os.path.join(base_path, "logs/mon.log"), max_bytes= MAX_LOG_SIZE * 1024 * 1024)
+
+    # ==================== 保存耗时统计 ====================
+    try:
+        time_cost_path = os.path.join(folder_path, "time_cost.txt")
+
+        total_time = round(time.time() - start_time, 2)
+
+        with open(time_cost_path, "w", encoding="utf-8") as f:
+            f.write("任务时间统计\n")
+            f.write("=" * 40 + "\n")
+            f.write(f"分类完成      : {round(task_record_time, 2)} s\n")
+            f.write(f"通用数据提取完成                : {round(temp_report_info_time, 2)} s\n")
+            f.write(f"合并后report_info生成           : {round(report_info_time, 2)} s\n")
+            f.write(f"决策树完成                  : {round(d_tree_time, 2)} s\n")
+            f.write(f"最终润色完成                : {round(report_polished_merge, 2)} s\n")
+            f.write("=" * 40 + "\n")
+            f.write(f"总耗时                      : {total_time} s\n")
+
+        print(f"耗时统计已保存: {time_cost_path}")
+
+    except Exception as e:
+        print(f"保存 time_cost.txt 失败: {e}")
+
 
     print(f"进程正常结束，已销毁")
     now = datetime.now(ZoneInfo("Asia/Shanghai"))

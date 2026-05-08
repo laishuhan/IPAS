@@ -434,7 +434,8 @@ def find_best_match_key(
     report_type,
     idx_num,
     template_id,
-    case_insensitive=True
+    case_insensitive = True,
+    is_show = False
 ):
     """
     返回 (matched_key, matched_alias)
@@ -442,11 +443,12 @@ def find_best_match_key(
     - matched_alias: alias_list 里命中的那个词（用于打印“命中-xxx”）
     """
     if not alias_list or not candidate_keys:
-        print(
-            f"[find_best_match_key] 空输入，跳过 | "
-            f"report_type={report_type}, idx_num={idx_num}, template_id={template_id}, "
-            f"alias_list={alias_list}, candidate_keys={candidate_keys}"
-        )
+        if is_show:
+            print(
+                f"[find_best_match_key] 空输入，跳过 | "
+                f"report_type={report_type}, idx_num={idx_num}, template_id={template_id}, "
+                f"alias_list={alias_list}, candidate_keys={candidate_keys}"
+            )
         return None, None
 
     config = KEY_NORMALIZE_CONFIG
@@ -464,11 +466,11 @@ def find_best_match_key(
         return s
 
     candidate_keys = list(candidate_keys)
-
-    print(
-        f"\n[find_best_match_key] 开始逐词对比 | "
-        f"report_type={report_type}, idx_num={idx_num}, template_id={template_id}"
-    )
+    if is_show:
+        print(
+            f"\n[find_best_match_key] 开始逐词对比 | "
+            f"report_type={report_type}, idx_num={idx_num}, template_id={template_id}"
+        )
 
     for alias in alias_list:
         normalized_alias = normalize(alias)
@@ -477,25 +479,26 @@ def find_best_match_key(
             normalized_candidate_key = normalize(candidate_key)
 
             is_hit = normalized_alias == normalized_candidate_key
-
-            print(
-                f"[find_best_match_key] 对比: "
-                f"词库关键词='{alias}' -> '{normalized_alias}' | "
-                f"模型关键词='{candidate_key}' -> '{normalized_candidate_key}' | "
-                f"命中={is_hit}"
-            )
+            if is_show:
+                print(
+                    f"[find_best_match_key] 对比: "
+                    f"词库关键词='{alias}' -> '{normalized_alias}' | "
+                    f"模型关键词='{candidate_key}' -> '{normalized_candidate_key}' | "
+                    f"命中={is_hit}"
+                )
 
             if is_hit:
-                print(
-                    f"[find_best_match_key] ✅ 最终命中 | "
-                    f"matched_key='{candidate_key}', matched_alias='{alias}'"
-                )
+                if is_show:
+                    print(
+                        f"[find_best_match_key] ✅ 最终命中 | "
+                        f"matched_key='{candidate_key}', matched_alias='{alias}'"
+                    )
                 return candidate_key, alias
-
-    print(
-        f"[find_best_match_key] 全部未命中 | "
-        f"report_type={report_type}, idx_num={idx_num}, template_id={template_id}"
-    )
+    if is_show:
+        print(
+            f"[find_best_match_key] 全部未命中 | "
+            f"report_type={report_type}, idx_num={idx_num}, template_id={template_id}"
+        )
 
     return None, None
 
@@ -506,7 +509,8 @@ def find_all_match_key_alias(
     report_type,
     idx_num,
     template_id,
-    case_insensitive=True
+    case_insensitive = True,
+    is_show = False
 ):
     """
     Return all matches in alias_list order as a list of (matched_key, matched_alias).
@@ -517,11 +521,12 @@ def find_all_match_key_alias(
     - 逐个输出“词库关键词”与“模型提取关键词”的归一化前后对比
     """
     if not alias_list or not candidate_keys:
-        print(
-            f"[find_all_match_key_alias] 空输入，跳过 | "
-            f"report_type={report_type}, idx_num={idx_num}, template_id={template_id}, "
-            f"alias_list={alias_list}, candidate_keys={candidate_keys}"
-        )
+        if is_show:
+            print(
+                f"[find_all_match_key_alias] 空输入，跳过 | "
+                f"report_type={report_type}, idx_num={idx_num}, template_id={template_id}, "
+                f"alias_list={alias_list}, candidate_keys={candidate_keys}"
+            )
         return []
 
     config = KEY_NORMALIZE_CONFIG
@@ -539,11 +544,11 @@ def find_all_match_key_alias(
         return s
 
     candidate_keys = list(candidate_keys)
-
-    print(
-        f"\n[find_all_match_key_alias] 开始逐词对比 | "
-        f"report_type={report_type}, idx_num={idx_num}, template_id={template_id}"
-    )
+    if is_show:
+        print(
+            f"\n[find_all_match_key_alias] 开始逐词对比 | "
+            f"report_type={report_type}, idx_num={idx_num}, template_id={template_id}"
+        )
 
     matches = []
     seen_keys = set()
@@ -555,39 +560,42 @@ def find_all_match_key_alias(
             normalized_candidate_key = normalize(candidate_key)
 
             is_hit = normalized_alias == normalized_candidate_key
-
-            print(
-                f"[find_all_match_key_alias] 对比: "
-                f"词库关键词='{alias}' -> '{normalized_alias}' | "
-                f"模型关键词='{candidate_key}' -> '{normalized_candidate_key}' | "
-                f"命中={is_hit}"
-            )
+            if is_show:
+                print(
+                    f"[find_all_match_key_alias] 对比: "
+                    f"词库关键词='{alias}' -> '{normalized_alias}' | "
+                    f"模型关键词='{candidate_key}' -> '{normalized_candidate_key}' | "
+                    f"命中={is_hit}"
+                )
 
             if is_hit:
                 if candidate_key not in seen_keys:
-                    print(
-                        f"[find_all_match_key_alias] ✅ 记录命中 | "
-                        f"matched_key='{candidate_key}', matched_alias='{alias}'"
-                    )
+                    if is_show:
+                        print(
+                            f"[find_all_match_key_alias] ✅ 记录命中 | "
+                            f"matched_key='{candidate_key}', matched_alias='{alias}'"
+                        )
 
                     matches.append((candidate_key, alias))
                     seen_keys.add(candidate_key)
                 else:
-                    print(
-                        f"[find_all_match_key_alias] 命中但已记录，跳过重复 | "
-                        f"matched_key='{candidate_key}', matched_alias='{alias}'"
-                    )
+                    if is_show:
+                        print(
+                            f"[find_all_match_key_alias] 命中但已记录，跳过重复 | "
+                            f"matched_key='{candidate_key}', matched_alias='{alias}'"
+                        )
 
-    if matches:
-        print(
-            f"[find_all_match_key_alias] 最终命中列表={matches} | "
-            f"report_type={report_type}, idx_num={idx_num}, template_id={template_id}"
-        )
-    else:
-        print(
-            f"[find_all_match_key_alias] 全部未命中 | "
-            f"report_type={report_type}, idx_num={idx_num}, template_id={template_id}"
-        )
+    if is_show:
+        if matches:
+            print(
+                f"[find_all_match_key_alias] 最终命中列表={matches} | "
+                f"report_type={report_type}, idx_num={idx_num}, template_id={template_id}"
+            )
+        else:
+            print(
+                f"[find_all_match_key_alias] 全部未命中 | "
+                f"report_type={report_type}, idx_num={idx_num}, template_id={template_id}"
+            )
 
     return matches
 
