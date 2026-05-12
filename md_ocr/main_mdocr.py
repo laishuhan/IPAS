@@ -419,8 +419,6 @@ def assemble_report_for_image(report_type, extracted_data, finder, image_user_in
     temp_val = merged_data[8]
     temp_unit = merged_data[9]
 
-
-
     # 复制数据,全部转为字符串形式
     merged_data[10] = convert_numbers_to_str(merged_data[8])
     merged_data[11] = convert_numbers_to_str(merged_data[9])
