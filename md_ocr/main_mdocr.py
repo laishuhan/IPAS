@@ -306,7 +306,7 @@ def assemble_report_for_image(report_type, extracted_data, finder, image_user_in
     #LLM 重提取
     if report_type in LLM_REEXTRACT_CONFIG:
 
-        print("触发 LLM 二次提取规则")
+        print("触发 LLM 重提取规则")
 
         for idx, cfg in LLM_REEXTRACT_CONFIG[report_type].items():
 
@@ -349,7 +349,7 @@ def assemble_report_for_image(report_type, extracted_data, finder, image_user_in
                 )
             except Exception as e:
 
-                print(f"LLM二次提取失败 idx={idx} : {e}")
+                print(f"LLM重提取失败 idx={idx} : {e}")
                 
     temp_val = merged_data[8]
     temp_unit =merged_data[9]
@@ -420,48 +420,6 @@ def assemble_report_for_image(report_type, extracted_data, finder, image_user_in
     temp_unit = merged_data[9]
 
 
-    #LLM 重提取
-    if report_type in LLM_REEXTRACT_CONFIG:
-
-        print("触发 LLM 重提取规则")
-
-        for idx, cfg in LLM_REEXTRACT_CONFIG[report_type].items():
-
-            prompt = cfg.get("prompt")
-
-            if not prompt:
-                continue
-
-            print(f"重新提取指标 index={idx}")
-
-            try:
-
-                response = ali_api_vision(
-                    DEFAULT_VISION_EXTRATCT_SYSTEM_PROMPT,
-                    prompt,
-                    image_path,
-                    0,
-                    ali_api_vision_key_001,
-                    temperature=0.0
-                )
-                parsed = parse_llm_json(response)
-
-                if parsed:
-
-                    val = parsed.get("val", -1)
-                    unit = parsed.get("unit", "")
-
-                    merged_data[8][idx] = val
-                    merged_data[9][idx] = unit
-
-                    print(
-                        f"LLM重新提取成功 idx={idx} -> {val} {unit}"
-                    )
-
-                    
-
-            except Exception as e:
-                print(f"LLM重提取失败 idx={idx} : {e}")
 
     # 复制数据,全部转为字符串形式
     merged_data[10] = convert_numbers_to_str(merged_data[8])
