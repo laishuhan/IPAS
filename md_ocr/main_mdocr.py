@@ -423,7 +423,7 @@ def assemble_report_for_image(report_type, extracted_data, finder, image_user_in
     #LLM 重提取
     if report_type in LLM_REEXTRACT_CONFIG:
 
-        print("触发 LLM 二次提取规则")
+        print("触发 LLM 重提取规则")
 
         for idx, cfg in LLM_REEXTRACT_CONFIG[report_type].items():
 
@@ -461,7 +461,7 @@ def assemble_report_for_image(report_type, extracted_data, finder, image_user_in
                     
 
             except Exception as e:
-                print(f"LLM二次提取失败 idx={idx} : {e}")
+                print(f"LLM重提取失败 idx={idx} : {e}")
 
     # 复制数据,全部转为字符串形式
     merged_data[10] = convert_numbers_to_str(merged_data[8])
